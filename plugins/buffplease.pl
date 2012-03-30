@@ -58,7 +58,7 @@ our $buff ||= {
 				};
 
 							
-Plugins::register("Buff Please?", "Version 0.1 r4", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r5", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -172,18 +172,13 @@ sub parseSkill
 	if($args->{sourceID} == $accountID)
 	{
 		if($hook eq 'packet/skill_cast')
-		{
-			# This skill is from the buff queue...
-#			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
-#				delete($buff->{lastSkill});
-#			}
-			
+		{			
 			$buff->{time} = $time + (($args->{wait}) / 1000);
 		}
 		elsif($hook eq 'packet/skill_used_no_damage')
 		{
 			my $actor = Actor::get($args->{targetID});
-		
+			
 		
 			if($args->{skillID} == 28)
 			{
@@ -191,7 +186,6 @@ sub parseSkill
 			
 				if($buff->{$actor->{name}}->{healFor} > 0)
 				{
-					print("Healing for...".$buff->{$actor->{name}}->{healFor}."\n");
 					$buff->{$actor->{name}}->{healFor} -= $args->{amount};
 					
 					# If we're still below the heal amount...
@@ -234,8 +228,6 @@ sub parseStatus
 			}
 		}
 	}
-	
-	# print(Dumper($args));	
 }
 
 sub parseChat
@@ -279,6 +271,27 @@ sub parseChat
 		}
 		
 		$buff->{$args->{MsgUser}}->{healFor} = $hp;
+	}
+
+	if($args->{Msg} =~ /more/i)
+	{
+		# If this user has already been healed in the past 10 seconds
+		if($buff->{$args->{MsgUser}}->{lastHeal} + 10 > $time)
+		{
+			$buff->{$args->{MsgUser}}->{please} = $time;
+			$buff->{$args->{MsgUser}}->{time} = $time;
+		
+			if($args->{MsgUser} eq $char->{name}) {
+				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $args->{MsgUser}});
+			}
+			else {			
+				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $args->{MsgUser}});
+			}			
+		
+			if($buff->{$args->{MsgUser}}->{healFor} < 5000) {
+				$buff->{$args->{MsgUser}}->{healFor} = 5000;
+			}
+		}
 	}
 	
 	while(my($skillID, $message) = each(%{$buff->{messages}}))
