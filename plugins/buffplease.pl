@@ -58,13 +58,13 @@ our $buff ||= {
 				};
 
 							
-Plugins::register("Buff Please?", "Version 0.1 r3", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r4", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
 								['packet/skill_used_no_damage', \&parseSkill],
-
 								['packet/actor_status_active', \&parseStatus],
+								
 								["packet_pubMsg", \&parseChat],
 								["packet_partyMsg", \&parseChat],
 								["packet_guildMsg", \&parseChat],
@@ -182,6 +182,34 @@ sub parseSkill
 		}
 		elsif($hook eq 'packet/skill_used_no_damage')
 		{
+			my $actor = Actor::get($args->{targetID});
+		
+		
+			if($args->{skillID} == 28)
+			{
+				$buff->{$actor->{name}}->{lastHeal} = $time;
+			
+				if($buff->{$actor->{name}}->{healFor} > 0)
+				{
+					print("Healing for...".$buff->{$actor->{name}}->{healFor}."\n");
+					$buff->{$actor->{name}}->{healFor} -= $args->{amount};
+					
+					# If we're still below the heal amount...
+					if($buff->{$actor->{name}}->{healFor} > 0) {
+						
+						$buff->{$actor->{name}}->{please} = $time;
+						$buff->{$actor->{name}}->{time} = $time;
+					
+						if($actor->{name} eq $char->{name}) {
+							unshift(@{$buff->{queue}->{$actor->{name}}}, {'type' => 'ss', 'skill' => 28, 'user' => $actor->{name}});
+						}
+						else {			
+							unshift(@{$buff->{queue}->{$actor->{name}}}, {'type' => 'sp', 'skill' => 28, 'user' => $actor->{name}});
+						}
+					}
+				}
+			}
+
 			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
 				delete($buff->{lastSkill});
 			}
@@ -234,7 +262,25 @@ sub parseChat
 			$buff->{$args->{MsgUser}}->{plz} = $time;
 		}
 	}
+	
+	if($args->{Msg} =~ /([0-9,]+)(k)?/i)
+	{
+		my $hp = $1;
+		my $modifier = $2;
+
+		$hp =~ s/,//;
 		
+		if($modifier) {
+			$hp *= 1000
+		}
+	
+		if($hp > 20000) {
+			$hp = 20000;
+		}
+		
+		$buff->{$args->{MsgUser}}->{healFor} = $hp;
+	}
+	
 	while(my($skillID, $message) = each(%{$buff->{messages}}))
 	{
 		if($args->{Msg} =~ /$message/i) {
