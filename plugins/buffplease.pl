@@ -13,15 +13,16 @@ use Data::Dumper;
 our $buff ||= {
 				'aliases' 	=> {
 								'Blessing'			=> 'bless|buff',
-								'Increase AGI'		=> 'agi|buff',
+								'Increase AGI'		=> '\bagi\b|buff',
 								'Sanctuary'			=> 'sanc',
-								'High Heal'			=> 'high|highness|hh',
+								'High Heal'			=> 'high|highness|\bhh\b',
 								'Ruwach'			=> 'sight',
 								'Impositio Manus'	=> 'impo',
-								#'Kyrie Eleison'		=> 'KE|Kyrie',
+								'Kyrie Eleison'		=> 'KE|Kyrie',
 								'Resurrection'		=> 'res',
-								'Assumptio'			=> 'assu',
+								'Assumptio'			=> 'assu|buff',
 								'Safety Wall'		=> 'wall',
+								'Magnificat'		=> '\bmag\b',
 								},
 							
 				'ignore'	=>	{
@@ -39,32 +40,30 @@ our $buff ||= {
 								"Please check your dictionary.",
 								"Say please~",
 								"Plz doesn't cut it.",
-								"Pls try harder.",
-								"Maybe later?",
-								"Don't feel like it.",
-								"No thanks!",
-								"Noob :D",
+								"Pls isn't very polite.",
+								"Just say please :3",
+								"Please works better.",
 								"lrn2spell",
 								"P-l-e-a-s-e",
-								"Pleeasee just say please?",
-								"I believe in you!",
-								"You can do it :)",
-								"Some day you'll learn...",
-								"So close!",
-								"Almost there~",
+								"Just say please?",
+								"This would be a lot easier if you said 'please'.",
+								"Saying please goes a long way.",
+								"Some day you'll learn... (to say please)",
 								"Have you tried saying please?",
-								"Where are your manners?",
-								"What would your mother say?",
+								"Where are your manners? Please try again.",
+								"Say please first~",
 								"Please please please!",
+								"What's so hard about saying please?",
 								]
 				};
 
 							
-Plugins::register("Buff Please?", "Version 0.1 r1", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r2", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
 								['packet/actor_status_active', \&parseStatus],
+
 								["packet_pubMsg", \&parseChat],
 								["packet_partyMsg", \&parseChat],
 								["packet_guildMsg", \&parseChat],
@@ -85,19 +84,19 @@ sub loop
 	{	
 		while(my($userName, $queue) = each(%{$buff->{queue}}))
 		{	
-			# If the request is older than 10 seconds... delete
-			if($buff->{$userName}->{time} < $time - 10) {
+			# If the request is older than 30 seconds... delete
+			if($buff->{$userName}->{time} < $time - 30) {
 				delete($buff->{queue}->{$userName});
 			}
 			else
 			{
-				if($buff->{$userName}->{please} > $time - 10) {
+				if($buff->{$userName}->{please} > $time - 30) {
 					my $command = shift(@{$buff->{queue}->{$userName}});					
 					push(@{$buff->{commands}}, $command);
 				}
 				
-				elsif($buff->{$userName}->{plz} > $time - 10) {
-					$buff->{$userName}->{plzTimeout} = $time + 60;
+				elsif($buff->{$userName}->{plz} > $time - 30) {
+					$buff->{$userName}->{plzTimeout} = $time + 15;
 					delete($buff->{$userName}->{plz});
 					
 					my $randomPhrase = $buff->{wit}->[rand @{$buff->{wit}}];
@@ -118,13 +117,13 @@ sub loop
 	
 	
 		# It took 5 seconds to cast a skill? It might have gotten interrupted.
-		if($buff->{lastSkill}->{time} + 5 < $time)
+		if($buff->{lastSkill}->{timeout} + 5 < $time)
 		{
 			unless($char->statusesString =~ /EFST_POSTDELAY/)
 			{
 				my $command = shift(@{$buff->{commands}});
 				
-				$buff->{lastSkill} = {'time'	=> $time,
+				$buff->{lastSkill} = {'timeout'	=> $time,
 									  'skill'	=> $command->{skill}};
 									  
 				Commands::run("$command->{type} $command->{skill} '$command->{user}'");
@@ -213,7 +212,7 @@ sub parseChat
 		$args->{MsgUser} = $args->{user};
 	}
 	
-	if($args->{Msg} =~ /p+l+e+a+s+e+/i)
+	if($args->{Msg} =~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
 	{
 		$buff->{$args->{MsgUser}}->{please} = $time;
 	}
@@ -225,12 +224,12 @@ sub parseChat
 			$buff->{$args->{MsgUser}}->{plz} = $time;
 		}
 	}
-
+	
 	while(my($skillID, $message) = each(%{$buff->{messages}}))
 	{
 		if($args->{Msg} =~ /$message/i) {
 			$buff->{$args->{MsgUser}}->{time} = $time;
-		
+				
 			if($args->{MsgUser} eq $char->{name}) {
 				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $args->{MsgUser}});
 			}
