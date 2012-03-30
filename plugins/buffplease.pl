@@ -58,7 +58,7 @@ our $buff ||= {
 				};
 
 							
-Plugins::register("Buff Please?", "Version 0.1 r5", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r6", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -127,6 +127,7 @@ sub loop
 				$buff->{lastSkill} = {'timeout'	=> $time,
 									  'skill'	=> $command->{skill}};
 									  
+				$command->{user} =~ s/'/\\'/g;
 				Commands::run("$command->{type} $command->{skill} '$command->{user}'");
 			}
 		}
