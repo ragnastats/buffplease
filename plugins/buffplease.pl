@@ -58,12 +58,13 @@ our $buff ||= {
 				};
 
 							
-Plugins::register("Buff Please?", "Version 0.1 r2", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r3", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
-								['packet/actor_status_active', \&parseStatus],
+								['packet/skill_used_no_damage', \&parseSkill],
 
+								['packet/actor_status_active', \&parseStatus],
 								["packet_pubMsg", \&parseChat],
 								["packet_partyMsg", \&parseChat],
 								["packet_guildMsg", \&parseChat],
@@ -166,16 +167,25 @@ sub parseSkill
 {
 	my($hook, $args) = @_;
 	my $time = Time::HiRes::time();
-
+	
 	# Am I casting?
 	if($args->{sourceID} == $accountID)
-	{		
-		# This skill is from the buff queue...
-		if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
-			delete($buff->{lastSkill});
+	{
+		if($hook eq 'packet/skill_cast')
+		{
+			# This skill is from the buff queue...
+#			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
+#				delete($buff->{lastSkill});
+#			}
+			
+			$buff->{time} = $time + (($args->{wait}) / 1000);
 		}
-		
-		$buff->{time} = $time + (($args->{wait} + 256) / 1000);
+		elsif($hook eq 'packet/skill_used_no_damage')
+		{
+			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
+				delete($buff->{lastSkill});
+			}
+		}
 	}
 }
 
@@ -192,7 +202,7 @@ sub parseStatus
 		{
 			if($args->{tick})
 			{
-				$buff->{time} = $time + (($args->{tick} + 256) / 1000);
+				$buff->{time} = $time + (($args->{tick}) / 1000);
 			}
 		}
 	}
@@ -224,7 +234,7 @@ sub parseChat
 			$buff->{$args->{MsgUser}}->{plz} = $time;
 		}
 	}
-	
+		
 	while(my($skillID, $message) = each(%{$buff->{messages}}))
 	{
 		if($args->{Msg} =~ /$message/i) {
@@ -238,7 +248,6 @@ sub parseChat
 			}
 		}
 	}
-
 	
 	if($args->{Msg} =~ /debug/i)
 	{
