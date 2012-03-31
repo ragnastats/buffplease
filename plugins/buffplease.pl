@@ -10,7 +10,7 @@ use Network;
 use Globals;
 use Data::Dumper;
 
-our $buff ||= {
+our $buff = {
 				'aliases' 	=> {
 								'Blessing'			=> 'bless|buff',
 								'Increase AGI'		=> '\bagi\b|buff',
@@ -57,8 +57,10 @@ our $buff ||= {
 								]
 				};
 
+our $userData ||= {};
+our $userQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.1 r6", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r7", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -79,33 +81,37 @@ sub unload
 
 sub loop
 {
+	# This is where we periodically loop through the requested commands.
 	my $time = Time::HiRes::time();
 
-	if(scalar keys %{$buff->{queue}})
+	if(scalar keys %{$userQueue})
 	{	
-		while(my($userName, $queue) = each(%{$buff->{queue}}))
+		while(my($userName, $queue) = each(%{$userQueue}))
 		{	
 			# If the request is older than 30 seconds... delete
-			if($buff->{$userName}->{time} < $time - 30) {
-				delete($buff->{queue}->{$userName});
+			if($userData->{$userName}->{time} < $time - 30) {
+				delete($userQueue->{$userName});
 			}
 			else
 			{
-				if($buff->{$userName}->{please} > $time - 30) {
-					my $command = shift(@{$buff->{queue}->{$userName}});					
+				# Have they said please within 30 seconds?
+				if($userData->{$userName}->{please} > $time - 30) {
+					my $command = shift(@{$userQueue->{$userName}});					
 					push(@{$buff->{commands}}, $command);
 				}
 				
-				elsif($buff->{$userName}->{plz} > $time - 30) {
-					$buff->{$userName}->{plzTimeout} = $time + 15;
-					delete($buff->{$userName}->{plz});
+				# Have they said plz within 30 seconds?
+				elsif($userData->{$userName}->{plz} > $time - 30) {
+					$userData->{$userName}->{plzTimeout} = $time + 15;
+					delete($userData->{$userName}->{plz});
 					
 					my $randomPhrase = $buff->{wit}->[rand @{$buff->{wit}}];
 					Commands::run("c $randomPhrase");
 				}
 				
-				unless(@{$buff->{queue}->{$userName}}) {
-					delete($buff->{queue}->{$userName});
+				# If the user queue is empty, we don't need to store an empty value.
+				unless(@{$userQueue->{$userName}}) {
+					delete($userQueue->{$userName});
 				}
 			}
 		}
@@ -116,7 +122,6 @@ sub loop
 		# Check every 0.1 seconds
 		$buff->{time} = $time + 0.1;
 	
-	
 		# It took 5 seconds to cast a skill? It might have gotten interrupted.
 		if($buff->{lastSkill}->{timeout} + 5 < $time)
 		{
@@ -124,9 +129,11 @@ sub loop
 			{
 				my $command = shift(@{$buff->{commands}});
 				
+				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
 									  'skill'	=> $command->{skill}};
-									  
+				
+				# Sanitize usernames by adding slashes
 				$command->{user} =~ s/'/\\'/g;
 				Commands::run("$command->{type} $command->{skill} '$command->{user}'");
 			}
@@ -139,6 +146,7 @@ sub parseSkills
 	# Got a skills list?
 	for my $handle (@skillsID)
 	{
+		# Code repurposed from the openkore source
 		my $skill = new Skill(handle => $handle);
 
 		if($char->{skills}{$handle}{lv})
@@ -152,16 +160,18 @@ sub parseSkills
 											'sp'	=> $char->{skills}{$handle}{sp}
 										};
 			
+			# Don't add ignored skills to the skills list!
 			unless($buff->{ignore}->{$skill->getName()})
 			{
-				$buff->{messages}->{$skillID} = $skill->getName();
+				$buff->{skills}->{$skillID} = $skill->getName();
 				
+				# Append aditional aliases if this skill has any
 				if($buff->{aliases}->{$skill->getName()}) {
-					$buff->{messages}->{$skillID} .= "|".$buff->{aliases}->{$skill->getName()};
+					$buff->{skills}->{$skillID} .= "|".$buff->{aliases}->{$skill->getName()};
 				}
 			}
-		}	
-	}
+		}
+	}	
 }
 
 sub parseSkill
@@ -169,42 +179,46 @@ sub parseSkill
 	my($hook, $args) = @_;
 	my $time = Time::HiRes::time();
 	
-	# Am I casting?
+	# Am I the one casting?
 	if($args->{sourceID} == $accountID)
 	{
 		if($hook eq 'packet/skill_cast')
-		{			
+		{
+			# Get the skill delay and wait that long before trying to do anything else
 			$buff->{time} = $time + (($args->{wait}) / 1000);
 		}
 		elsif($hook eq 'packet/skill_used_no_damage')
 		{
 			my $actor = Actor::get($args->{targetID});
 			
-		
+			# Skill 28 is heal
 			if($args->{skillID} == 28)
 			{
 				$buff->{$actor->{name}}->{lastHeal} = $time;
 			
+				# If the player requested to be healed for a specific amount (heal 10k please)
 				if($buff->{$actor->{name}}->{healFor} > 0)
 				{
 					$buff->{$actor->{name}}->{healFor} -= $args->{amount};
 					
-					# If we're still below the heal amount...
+					# If they still need more heals...
 					if($buff->{$actor->{name}}->{healFor} > 0) {
 						
 						$buff->{$actor->{name}}->{please} = $time;
 						$buff->{$actor->{name}}->{time} = $time;
-					
+	
+						# Add heal to the queue again
 						if($actor->{name} eq $char->{name}) {
-							unshift(@{$buff->{queue}->{$actor->{name}}}, {'type' => 'ss', 'skill' => 28, 'user' => $actor->{name}});
+							unshift(@{$userQueue->{$actor->{name}}}, {'type' => 'ss', 'skill' => 28, 'user' => $actor->{name}});
 						}
 						else {			
-							unshift(@{$buff->{queue}->{$actor->{name}}}, {'type' => 'sp', 'skill' => 28, 'user' => $actor->{name}});
+							unshift(@{$userQueue->{$actor->{name}}}, {'type' => 'sp', 'skill' => 28, 'user' => $actor->{name}});
 						}
 					}
 				}
 			}
 
+			# Skill casting complete, we don't need to remember the last skill anymore
 			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
 				delete($buff->{lastSkill});
 			}
@@ -225,6 +239,7 @@ sub parseStatus
 		{
 			if($args->{tick})
 			{
+				# Get the skill cooldown and wait that long before trying to do anything else
 				$buff->{time} = $time + (($args->{tick}) / 1000);
 			}
 		}
@@ -236,26 +251,29 @@ sub parseChat
 	my($hook, $args) = @_;
 	my $time = Time::HiRes::time();
 
-	
+	# selfChat returns slightly different arguements, let's fix that
 	if($hook eq 'packet_selfChat')
 	{
 		$args->{Msg} = $args->{msg};
 		$args->{MsgUser} = $args->{user};
 	}
 	
+	# Please?
 	if($args->{Msg} =~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
 	{
-		$buff->{$args->{MsgUser}}->{please} = $time;
+		$userData->{$args->{MsgUser}}->{please} = $time;
 	}
 	
-	if($args->{Msg} =~ /\b(p+l+z+|p+l+s+)\b/i)
+	# Plz?
+	if($args->{Msg} =~ /\b(p+l+z+|p+l+s+|p+l+o+x+)\b/i)
 	{
 		# Unless this person has already been corrected.
-		unless($buff->{$args->{MsgUser}}->{plzTimeout} > $time) {
-			$buff->{$args->{MsgUser}}->{plz} = $time;
+		if($userData->{$args->{MsgUser}}->{plzTimeout} < $time) {
+			$userData->{$args->{MsgUser}}->{plz} = $time;
 		}
 	}
 	
+	# Heal 10k, 4000, etc.
 	if($args->{Msg} =~ /([0-9,]+)(k)?/i)
 	{
 		my $hp = $1;
@@ -267,51 +285,59 @@ sub parseChat
 			$hp *= 1000
 		}
 	
+		# Most people don't have more than 20,000 HP
 		if($hp > 20000) {
 			$hp = 20000;
 		}
 		
-		$buff->{$args->{MsgUser}}->{healFor} = $hp;
+		$userData->{$args->{MsgUser}}->{healFor} = $hp;
 	}
 
+	# HEAL ME MORE!!!
 	if($args->{Msg} =~ /more/i)
 	{
 		# If this user has already been healed in the past 10 seconds
-		if($buff->{$args->{MsgUser}}->{lastHeal} + 10 > $time)
+		if($userData->{$args->{MsgUser}}->{lastHeal} + 10 > $time)
 		{
-			$buff->{$args->{MsgUser}}->{please} = $time;
-			$buff->{$args->{MsgUser}}->{time} = $time;
+			$userData->{$args->{MsgUser}}->{please} = $time;
+			$userData->{$args->{MsgUser}}->{time} = $time;
 		
 			if($args->{MsgUser} eq $char->{name}) {
-				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $args->{MsgUser}});
+				unshift(@{$userQueue->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $args->{MsgUser}});
 			}
 			else {			
-				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $args->{MsgUser}});
+				unshift(@{$userQueue->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $args->{MsgUser}});
 			}			
 		
-			if($buff->{$args->{MsgUser}}->{healFor} < 5000) {
-				$buff->{$args->{MsgUser}}->{healFor} = 5000;
+			# Someone asking for more probably wants a couple heals
+			if($userData->{$args->{MsgUser}}->{healFor} < 5000) {
+				$userData->{$args->{MsgUser}}->{healFor} = 5000;
 			}
 		}
 	}
 	
-	while(my($skillID, $message) = each(%{$buff->{messages}}))
+	# Loop through the list of available skills
+	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
 	{
-		if($args->{Msg} =~ /$message/i) {
-			$buff->{$args->{MsgUser}}->{time} = $time;
-				
+		# If the skill name occurs in this user's message
+		if($args->{Msg} =~ /$skillName/i) {
+			$userData->{$args->{MsgUser}}->{time} = $time;
+			
+			# If you're the one asking for something, you need to use skill self (ss)
 			if($args->{MsgUser} eq $char->{name}) {
-				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $args->{MsgUser}});
+				unshift(@{$userQueue->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $args->{MsgUser}});
 			}
-			else {			
-				unshift(@{$buff->{queue}->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $args->{MsgUser}});
+			
+			# Otherwise use skill on a player (sp)
+			else {
+				unshift(@{$userQueue->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $args->{MsgUser}});
 			}
 		}
 	}
 	
 	if($args->{Msg} =~ /debug/i)
 	{
-		print(Dumper($buff->{messages}));
+		print(Dumper($buff->{skills}));
 #		print(Dumper($char));
 	}
 }
