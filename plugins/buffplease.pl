@@ -61,7 +61,7 @@ our $buff ||= {
 our $commandUser ||= {};
 our $commandQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.1 r9", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r10", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -323,13 +323,13 @@ sub parseChat
 	{
 		# If the skill name occurs in this user's message
 		if($args->{Msg} =~ /$skillName/i) {
-			# Match the string following a skill name
-			$args->{Msg} =~ m/$skillName(?:\w+)?(?:\s+)?([^\s"']+|".+"|'.+')/i;
+			# Match the string following a skill name			
+			$args->{Msg} =~ m/(?:$skillName)(?:\w+)?(?:\s+)?([^\s"']+|".+"|'.+')/i;
 		
 			# Save it and strip quotes
 			my $potentialPlayer = $1;
 			$potentialPlayer =~ s/["']//g;
-			
+						
 			# Make sure it's defined and not please
 			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
 			{
@@ -340,6 +340,11 @@ sub parseChat
 					# Did they say please?
 					if($commandUser->{$args->{MsgUser}}->{please} > $time - 30) {
 						$commandUser->{$player->{name}}->{please} = $time;
+					}
+					
+					# Did they ask for multiple heals?
+					if($commandUser->{$args->{MsgUser}}->{healFor} > 0) {
+						$commandUser->{$player->{name}}->{healFor} = $commandUser->{$args->{MsgUser}}->{healFor};
 					}
 					
 					# Cast on the requested player
