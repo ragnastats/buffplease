@@ -3,6 +3,7 @@ package Buff;
 # Perl includes
 use strict;
 use Data::Dumper;
+use Storable;
 
 # Kore includes
 use Settings;
@@ -19,19 +20,22 @@ our $buff ||= {
 								'High Heal'			=> 'high|highness|\bhh\b',
 								'Ruwach'			=> 'sight',
 								'Impositio Manus'	=> 'impo',
-								'Kyrie Eleison'		=> 'KE|Kyrie',
+								'Kyrie Eleison'		=> '\bKE\b|Kyrie',
 								'Resurrection'		=> 'res\b',
+								'Status Recovery'	=> 'status|recovery',
 								'Assumptio'			=> 'assu|buff',
 								'Safety Wall'		=> 'wall',
-								'Magnificat'		=> '\bmag\b',
+								'Magnificat'		=> '\bmag\b|magni',
+								'Secrament'			=> 'secra|sacra|sacrement',
+								'Cantocandidus'		=> 'canto',
+								'Clementia'			=> 'clem',
+								'Praefatio' 		=> 'prae', 
+								'Renovatio'			=> 'reno\b',
 								},
 							
 				'ignore'	=>	{
 								'Teleport'		=> 1,
 								'Warp Portal'	=> 1,
-								'Epiclesis'		=> 1,
-								'Kyrie Eleison'	=> 1,
-								'Holy Light'	=> 1,
 								},
 								
 				'wit'		=> [
@@ -61,7 +65,7 @@ our $buff ||= {
 our $commandUser ||= {};
 our $commandQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.1 r10", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r11", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -137,6 +141,7 @@ sub loop
 				
 				# Sanitize usernames by adding slashes
 				$command->{user} =~ s/'/\\'/g;
+				$command->{user} =~ s/;/\\;/g;
 				Commands::run("$command->{type} $command->{skill} '$command->{user}'");
 			}
 		}
@@ -192,7 +197,7 @@ sub parseSkill
 		elsif($hook eq 'packet/skill_used_no_damage')
 		{
 			my $actor = Actor::get($args->{targetID});
-			
+						
 			# Skill 28 is heal
 			if($args->{skillID} == 28)
 			{
@@ -252,31 +257,85 @@ sub parseChat
 {
 	my($hook, $args) = @_;
 	my $time = Time::HiRes::time();
-
+	my $chat = Storable::dclone($args);
+	
 	# selfChat returns slightly different arguements, let's fix that
 	if($hook eq 'packet_selfChat')
 	{
-		$args->{Msg} = $args->{msg};
-		$args->{MsgUser} = $args->{user};
+		$chat->{Msg} = $chat->{msg};
+		$chat->{MsgUser} = $chat->{user};
 	}
-	
-	# Please?
-	if($args->{Msg} =~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
+		
+	# Loop through the list of available skills
+	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
 	{
-		$commandUser->{$args->{MsgUser}}->{please} = $time;
+		# Remove whitespace from skill names, Gravity is not to be trusted!
+		$skillName =~ s/^\s+//;
+		$skillName =~ s/\s+$//;
+	
+		# If the skill name occurs in this user's message
+		if($chat->{Msg} =~ /$skillName/i) {
+			# Match the string following a skill name			
+			$chat->{Msg} =~ m/(?:$skillName)(?:\w+)?(?:\s+)?([^\s"']+|".+"|'.+')/i;
+		
+			# Save it and strip quotes
+			my $potentialPlayer = $1;
+			$potentialPlayer =~ s/["']//g;
+				
+			# Make sure it's defined and not please
+			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
+			{
+				my $player = Match::player($potentialPlayer, 1);
+				my $playerName = '';
+				
+				# Is it a player?
+				if($player) {
+					$playerName = $player->{name};
+				}
+								
+				# Is it me?
+				elsif($char->{name} =~ /^$potentialPlayer/i) {
+					$playerName = $char->{name};
+				}
+				
+				# Cast on the requested player
+				
+				if($playerName) {
+					$chat->{MsgUser} = $playerName;
+				}
+			}
+			
+			$commandUser->{$chat->{MsgUser}}->{time} = $time;
+			
+			# If you're the one asking for something, you need to use skill self (ss)
+			if($chat->{MsgUser} eq $char->{name}) {
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
+			}
+			
+			# Otherwise use skill on a player (sp)
+			else {
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
+			}
+		}
+	}
+
+	# Please?
+	if($chat->{Msg} =~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
+	{
+		$commandUser->{$chat->{MsgUser}}->{please} = $time;
 	}
 	
 	# Plz?
-	if($args->{Msg} =~ /\b(p+l+z+|p+l+s+|p+l+o+x+)\b/i)
+	if($chat->{Msg} =~ /\b(p+l+z+|p+l+s+|p+l+o+x+)\b/i)
 	{
 		# Unless this person has already been corrected.
-		if($commandUser->{$args->{MsgUser}}->{plzTimeout} < $time) {
-			$commandUser->{$args->{MsgUser}}->{plz} = $time;
+		if($commandUser->{$chat->{MsgUser}}->{plzTimeout} < $time) {
+			$commandUser->{$chat->{MsgUser}}->{plz} = $time;
 		}
 	}
-	
+
 	# Heal 10k, 4000, etc.
-	if($args->{Msg} =~ /([0-9,]+)(k)?/i)
+	if($chat->{Msg} =~ /([0-9,]+)\s*([kx]\s)?/i)
 	{
 		my $hp = $1;
 		my $modifier = $2;
@@ -287,86 +346,38 @@ sub parseChat
 			$hp *= 1000
 		}
 	
-		# Most people don't have more than 20,000 HP
-		if($hp > 20000) {
-			$hp = 20000;
+		# Most people don't have more than 30,000 HP
+		if($hp > 30000) {
+			$hp = 30000;
 		}
 		
-		$commandUser->{$args->{MsgUser}}->{healFor} = $hp;
+		$commandUser->{$chat->{MsgUser}}->{healFor} = $hp;
 	}
 
 	# HEAL ME MORE!!!
-	if($args->{Msg} =~ /more/i)
+	if($chat->{Msg} =~ /more/i)
 	{
 		# If this user has already been healed in the past 10 seconds
-		if($commandUser->{$args->{MsgUser}}->{lastHeal} + 10 > $time)
+		if($commandUser->{$chat->{MsgUser}}->{lastHeal} + 10 > $time)
 		{
-			$commandUser->{$args->{MsgUser}}->{please} = $time;
-			$commandUser->{$args->{MsgUser}}->{time} = $time;
+			$commandUser->{$chat->{MsgUser}}->{please} = $time;
+			$commandUser->{$chat->{MsgUser}}->{time} = $time;
 		
-			if($args->{MsgUser} eq $char->{name}) {
-				unshift(@{$commandQueue->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $args->{MsgUser}});
+			if($chat->{MsgUser} eq $char->{name}) {
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $chat->{MsgUser}});
 			}
 			else {			
-				unshift(@{$commandQueue->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $args->{MsgUser}});
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $chat->{MsgUser}});
 			}			
 		
 			# Someone asking for more probably wants a couple heals
-			if($commandUser->{$args->{MsgUser}}->{healFor} < 5000) {
-				$commandUser->{$args->{MsgUser}}->{healFor} = 5000;
+			if($commandUser->{$chat->{MsgUser}}->{healFor} < 5000) {
+				$commandUser->{$chat->{MsgUser}}->{healFor} = 5000;
 			}
 		}
 	}
 	
-	# Loop through the list of available skills
-	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
-	{
-		# If the skill name occurs in this user's message
-		if($args->{Msg} =~ /$skillName/i) {
-			# Match the string following a skill name			
-			$args->{Msg} =~ m/(?:$skillName)(?:\w+)?(?:\s+)?([^\s"']+|".+"|'.+')/i;
-		
-			# Save it and strip quotes
-			my $potentialPlayer = $1;
-			$potentialPlayer =~ s/["']//g;
-						
-			# Make sure it's defined and not please
-			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
-			{
-				my $player = Match::player($potentialPlayer, 1);
-			
-				# Is it a player?
-				if($player) {
-					# Did they say please?
-					if($commandUser->{$args->{MsgUser}}->{please} > $time - 30) {
-						$commandUser->{$player->{name}}->{please} = $time;
-					}
-					
-					# Did they ask for multiple heals?
-					if($commandUser->{$args->{MsgUser}}->{healFor} > 0) {
-						$commandUser->{$player->{name}}->{healFor} = $commandUser->{$args->{MsgUser}}->{healFor};
-					}
-					
-					# Cast on the requested player
-					$args->{MsgUser} = $player->{name};
-				}
-			}
-			
-			$commandUser->{$args->{MsgUser}}->{time} = $time;
-			
-			# If you're the one asking for something, you need to use skill self (ss)
-			if($args->{MsgUser} eq $char->{name}) {
-				unshift(@{$commandQueue->{$args->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $args->{MsgUser}});
-			}
-			
-			# Otherwise use skill on a player (sp)
-			else {
-				unshift(@{$commandQueue->{$args->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $args->{MsgUser}});
-			}
-		}
-	}
-	
-	if($args->{Msg} =~ /debug/i)
+	if($chat->{Msg} =~ /debug/i)
 	{
 #		print(Dumper($buff->{skillsAvailable}));
 		print(Dumper($commandQueue));
