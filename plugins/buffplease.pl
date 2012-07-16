@@ -65,7 +65,7 @@ our $buff ||= {
 our $commandUser ||= {};
 our $commandQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.1 r11", \&unload);
+Plugins::register("Buff Please?", "Version 0.1 r12", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -281,6 +281,9 @@ sub parseChat
 			# Save it and strip quotes
 			my $potentialPlayer = $1;
 			$potentialPlayer =~ s/["']//g;
+				
+			# Sanitize backslashes!
+			$potentialPlayer =~ s/\\/\\\\/g;
 				
 			# Make sure it's defined and not please
 			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
