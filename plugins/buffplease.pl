@@ -265,7 +265,11 @@ sub parseChat
 		$chat->{Msg} = $chat->{msg};
 		$chat->{MsgUser} = $chat->{user};
 	}
-		
+	
+	# Sanitize potential regex in player names and messages.
+	$chat->{MsgUser} =~ s/[-\\.,_*+?^\$[\](){}!=|]/\\$&/g;
+	$chat->{Msg} =~ s/[-\\.,_*+?^\$[\](){}!=|]/\\$&/g;
+	
 	# Loop through the list of available skills
 	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
 	{
