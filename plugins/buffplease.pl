@@ -13,6 +13,13 @@ use Globals;
 use Match;
 
 our $buff ||= {
+				# This value is used to determine who will be buffed
+				# 'all' buffs anyone who asks
+				# 'guild' only buffs people in the following list of guilds
+				'permission' => 'all',
+				'guilds' => ['RagnaStats', 'RagnaStats.com'],
+				
+				# Use this to map what skills are triggered by the chat
 				'aliases' 	=> {
 								'Blessing'			=> 'bless|buff',
 								'Increase AGI'		=> '\bagi\b|buff',
@@ -31,13 +38,16 @@ our $buff ||= {
 								'Clementia'			=> 'clem',
 								'Praefatio' 		=> 'prae', 
 								'Renovatio'			=> 'reno\b',
+								'Full Chemical Protection' => 'fcp'
 								},
-							
+				
+				# These skills will never be used
 				'ignore'	=>	{
 								'Teleport'		=> 1,
 								'Warp Portal'	=> 1,
 								},
 								
+				# Messages to make fun of people who say plz
 				'wit'		=> [
 								"You mean please?",
 								"Don't you mean please?",
@@ -65,7 +75,7 @@ our $buff ||= {
 our $commandUser ||= {};
 our $commandQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.1 r12", \&unload);
+Plugins::register("Buff Please?", "Version 0.2", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -76,12 +86,23 @@ my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								["packet_partyMsg", \&parseChat],
 								["packet_guildMsg", \&parseChat],
 								["packet_selfChat", \&parseChat],
-								["packet_privMsg", \&parseChat]);
+								["packet_privMsg", \&parseChat],
+								
+								['packet/actor_exists', \&parseActor],
+								['packet/actor_info', \&parseInfo]);
 
 								
 sub unload
 {
 	Plugins::delHooks($hooks);
+}
+
+sub in_array {
+    my ($arr,$search_for) = @_;
+    foreach my $value (@$arr) {
+        return 1 if $value eq $search_for;
+    }
+    return 0;
 }
 
 sub loop
@@ -138,6 +159,16 @@ sub loop
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
 									  'skill'	=> $command->{skill}};
+				
+				if($buff->{permission} eq 'guild')
+				{
+					my $player = Match::player($command->{user}, 1);
+
+					unless(in_array($buff->{guilds}, $player->{guild}->{name}))
+					{
+						next;
+					}
+				}
 				
 				# Sanitize usernames by adding slashes
 				$command->{user} =~ s/'/\\'/g;
@@ -391,6 +422,34 @@ sub parseChat
 		print(Dumper($commandUser));
 		print(Dumper($buff));
 #		print(Dumper($char));
+	}
+}
+
+sub parseActor
+{
+	my($hook, $args) = @_;
+	my $playerID = unpack('V', $args->{ID});
+	my $guildID = unpack('V', $args->{guildID});
+	my $time = Time::HiRes::time();
+	
+	$buff->{player}->{$playerID} = $guildID;
+	
+	unless($buff->{guild}->{$guildID})
+	{
+		$messageSender->sendGetPlayerInfo($args->{ID});
+	}
+}
+
+sub parseInfo
+{
+	my($hook, $args) = @_;
+	
+	if($args->{guildName})
+	{
+		my $playerID = unpack('V', $args->{ID});
+		my $guildID = $buff->{player}->{$playerID};
+
+		$buff->{guild}->{$guildID} = $args->{guildName};		
 	}
 }
 
