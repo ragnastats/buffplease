@@ -298,9 +298,9 @@ sub parseChat
 	}
 	
 	# Sanitize potential regex in player names and messages.
-	$chat->{MsgUser} =~ s/[-\\.,_*+?^\$[\](){}!=|]/\\$&/g;
-	$chat->{Msg} =~ s/[-\\.,_*+?^\$[\](){}!=|]/\\$&/g;
-	
+	$chat->{MsgUser} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
+	$chat->{Msg} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
+
 	# Loop through the list of available skills
 	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
 	{
@@ -316,10 +316,7 @@ sub parseChat
 			# Save it and strip quotes
 			my $potentialPlayer = $1;
 			$potentialPlayer =~ s/["']//g;
-				
-			# Sanitize backslashes!
-			$potentialPlayer =~ s/\\/\\\\/g;
-				
+            
 			# Make sure it's defined and not please
 			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
 			{
