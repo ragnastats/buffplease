@@ -38,7 +38,11 @@ our $buff ||= {
 								'Clementia'			=> 'clem',
 								'Praefatio' 		=> 'prae', 
 								'Renovatio'			=> 'reno\b',
-								'Full Chemical Protection' => 'fcp'
+								'Full Chemical Protection' => 'fcp',
+								'Endow Blaze'		=> 'fire endow',
+								'Endow Tsunami'		=> '(ice|water) endow',
+								'Endow Tornado'		=> 'wind endow',
+								'Endow Quake'		=> '(earth|ground) endow'
 								},
 				
 				# These skills will never be used
