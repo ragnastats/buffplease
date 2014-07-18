@@ -79,7 +79,7 @@ our $buff ||= {
 our $commandUser ||= {};
 our $commandQueue ||= {};
 							
-Plugins::register("Buff Please?", "Version 0.2", \&unload);
+Plugins::register("Buff Please?", "Buff people when they ask", \&unload);
 my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
 								['packet/skills_list', \&parseSkills],
 								['packet/skill_cast', \&parseSkill],
@@ -159,25 +159,33 @@ sub loop
 			unless($char->statusesString =~ /EFST_POSTDELAY/)
 			{
 				my $command = shift(@{$buff->{commands}});
-				
+                my $player = Match::player($command->{user}, 1);
+
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
 									  'skill'	=> $command->{skill}};
 				
 				if($buff->{permission} eq 'guild')
 				{
-					my $player = Match::player($command->{user}, 1);
-
 					unless(in_array($buff->{guilds}, $player->{guild}->{name}))
 					{
 						next;
 					}
 				}
-				
-				# Sanitize usernames by adding slashes
-				$command->{user} =~ s/'/\\'/g;
-				$command->{user} =~ s/;/\\;/g;
-				Commands::run("$command->{type} $command->{skill} '$command->{user}'");
+
+                # Ensure the player still exists before casting
+                if($player)
+                {
+                    # Sanitize usernames by adding slashes
+                    my $sanitized = $command->{user};
+                    $sanitized =~ s/'/\\'/g;
+                    $sanitized =~ s/;/\\;/g;
+                    Commands::run("$command->{type} $command->{skill} '$sanitized'");
+                }
+                else
+                {
+                    $buff->{lastSkill}->{timeout} = $time - 5;
+                }
 			}
 		}
 	}
