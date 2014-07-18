@@ -21,28 +21,28 @@ our $buff ||= {
 				
 				# Use this to map what skills are triggered by the chat
 				'aliases' 	=> {
-								'Blessing'			=> 'bless|buff',
-								'Increase AGI'		=> '\bagi\b|buff',
+								'Blessing'			=> '(all|full) buff|bless|buff',
+								'Increase AGI'		=> '(all|full) buff|\bagi\b|buff',
 								'Sanctuary'			=> 'sanc',
 								'High Heal'			=> 'high|highness|\bhh\b',
 								'Ruwach'			=> 'sight',
-								'Impositio Manus'	=> 'impo',
-								'Kyrie Eleison'		=> '\bKE\b|Kyrie',
-								'Resurrection'		=> 'res\b',
-								'Status Recovery'	=> 'status|recovery',
-								'Assumptio'			=> 'assu|buff',
+								'Impositio Manus'	=> '(all|full) buff|impo',
+								'Kyrie Eleison'		=> '\bKE\b|Kyrie|\bKy\b',
+								'Resurrection'		=> 'res\b|resu',
+								'Status Recovery'	=> '(all|full) buff|status|recovery',
+								'Assumptio'			=> '(all|full) buff|assu|buff',
 								'Safety Wall'		=> 'wall',
 								'Magnificat'		=> '\bmag\b|magni',
-								'Secrament'			=> 'secra|sacra|sacrement',
+								'Secrament'			=> '(all|full) buff|secra|sacra|sacrement',
 								'Cantocandidus'		=> 'canto',
 								'Clementia'			=> 'clem',
 								'Praefatio' 		=> 'prae', 
-								'Renovatio'			=> 'reno\b',
+								'Renovatio'			=> '(all|full) buff|reno\b',
 								'Full Chemical Protection' => 'fcp',
-								'Endow Blaze'		=> 'fire endow',
-								'Endow Tsunami'		=> '(ice|water) endow',
-								'Endow Tornado'		=> 'wind endow',
-								'Endow Quake'		=> '(earth|ground) endow'
+								'Endow Blaze'		=> '(flame|fire) endow|endow (fire|flame)',
+								'Endow Tsunami'		=> '(ice|water) endow|endow (ice|water)',
+								'Endow Tornado'		=> 'wind endow|endow wind',
+								'Endow Quake'		=> '(earth|ground) endow|endow (earth|ground)'
 								},
 				
 				# These skills will never be used
