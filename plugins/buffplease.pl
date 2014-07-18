@@ -162,7 +162,7 @@ sub loop
 				my $player_name = $command->{user};
 				$player_name =~ s/\\([^\\])/$1/g;
 
-                my $player = Match::player($player_name, 1);
+		my $player = ($player_name eq $char->{name}) ? 1 : Match::player($player_name, 1);
 
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
