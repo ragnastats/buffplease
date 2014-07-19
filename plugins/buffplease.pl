@@ -159,10 +159,7 @@ sub loop
 			unless($char->statusesString =~ /EFST_POSTDELAY/)
 			{
 				my $command = shift(@{$buff->{commands}});
-				my $player_name = $command->{user};
-				$player_name =~ s/\\([^\\])/$1/g;
-
-		my $player = ($player_name eq $char->{name}) ? 1 : Match::player($player_name, 1);
+                my $player = ($command->{user} eq $char->{name}) ? 1 : Match::player($command->{user}, 1);
 
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
@@ -180,7 +177,7 @@ sub loop
                 if($player)
                 {
                     # Sanitize usernames by adding slashes
-                    my $sanitized = $player_name;
+                    my $sanitized = $command->{user};
                     $sanitized =~ s/'/\\'/g;
                     $sanitized =~ s/;/\\;/g;
                     Commands::run("$command->{type} $command->{skill} '$sanitized'");
@@ -312,8 +309,7 @@ sub parseChat
 		$chat->{MsgUser} = $chat->{user};
 	}
 	
-	# Sanitize potential regex in player names and messages.
-	$chat->{MsgUser} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
+	# Sanitize potential regex in messages.
 	$chat->{Msg} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
 
 	# Loop through the list of available skills
