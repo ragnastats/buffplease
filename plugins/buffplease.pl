@@ -49,6 +49,7 @@ our $buff ||= {
 				'ignore'	=>	{
 								'Teleport'		=> 1,
 								'Warp Portal'	=> 1,
+								'Classical Pluck' => 1,
 								},
 								
 				# Messages to make fun of people who say plz
