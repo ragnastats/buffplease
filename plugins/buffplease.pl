@@ -21,28 +21,28 @@ our $buff ||= {
 				
 				# Use this to map what skills are triggered by the chat
 				'aliases' 	=> {
-								'Blessing'			=> '(all|full) buff|bless|buff',
-								'Increase AGI'		=> '(all|full) buff|\bagi\b|buff',
+								'Blessing'			=> '(?:all|full) buff|bless|buff',
+								'Increase AGI'		=> '(?:all|full) buff|\bagi\b|buff',
 								'Sanctuary'			=> 'sanc',
 								'High Heal'			=> 'high|highness|\bhh\b',
 								'Ruwach'			=> 'sight',
-								'Impositio Manus'	=> '(all|full) buff|impo',
+								'Impositio Manus'	=> '(?:all|full) buff|impo',
 								'Kyrie Eleison'		=> '\bKE\b|Kyrie|\bKy\b',
 								'Resurrection'		=> 'res\b|resu',
-								'Status Recovery'	=> '(all|full) buff|status|recovery',
-								'Assumptio'			=> '(all|full) buff|assu|buff',
+								'Status Recovery'	=> '(?:all|full) buff|status|recovery',
+								'Assumptio'			=> '(?:all|full) buff|assu|buff',
 								'Safety Wall'		=> 'wall',
 								'Magnificat'		=> '\bmag\b|magni',
-								'Secrament'			=> '(all|full) buff|secra|sacra|sacrement',
+								'Secrament'			=> '(?:all|full) buff|secra|sacra|sacrement',
 								'Cantocandidus'		=> 'canto',
 								'Clementia'			=> 'clem',
 								'Praefatio' 		=> 'prae', 
-								'Renovatio'			=> '(all|full) buff|reno\b',
+								'Renovatio'			=> '(?:all|full) buff|reno\b',
 								'Full Chemical Protection' => 'fcp',
-								'Endow Blaze'		=> '(flame|fire) endow|endow (fire|flame)',
-								'Endow Tsunami'		=> '(ice|water) endow|endow (ice|water)',
+								'Endow Blaze'		=> '(?:flame|fire) endow|endow (?:fire|flame)',
+								'Endow Tsunami'		=> '(?:ice|water) endow|endow (?:ice|water)',
 								'Endow Tornado'		=> 'wind endow|endow wind',
-								'Endow Quake'		=> '(earth|ground) endow|endow (earth|ground)'
+								'Endow Quake'		=> '(?:earth|ground) endow|endow (?:earth|ground)'
 								},
 				
 				# These skills will never be used
@@ -329,6 +329,8 @@ sub parseChat
 			my $potentialPlayer = $1;
 			$potentialPlayer =~ s/["']//g;
             
+
+
 			# Make sure it's defined and not please
 			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
 			{
