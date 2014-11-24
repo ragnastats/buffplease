@@ -43,7 +43,8 @@ our $buff ||= {
 								'Endow Blaze'		=> '(?:flame|fire) endow|endow (?:fire|flame)',
 								'Endow Tsunami'		=> '(?:ice|water) endow|endow (?:ice|water)',
 								'Endow Tornado'		=> 'wind endow|endow wind',
-								'Endow Quake'		=> '(?:earth|ground) endow|endow (?:earth|ground)'
+								'Endow Quake'		=> '(?:earth|ground) endow|endow (?:earth|ground)',
+								'Magic Strings'		=> 'string|strings'
 								},
 				
 				# These skills will never be used
