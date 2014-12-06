@@ -371,7 +371,7 @@ sub parseChat
 	}
 
 	# Please?
-	if($chat->{Msg} =~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
+	if($chat->{Msg} =~ /p+ ?(l|w)+ ?e+ ?a+ ?s+ ?(e+)?|p+w+e+s+e/i)
 	{
 		$commandUser->{$chat->{MsgUser}}->{please} = $time;
 	}
