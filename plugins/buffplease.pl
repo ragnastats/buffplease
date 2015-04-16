@@ -233,7 +233,7 @@ sub parseSkill
 	my $time = Time::HiRes::time();
 	
 	# Am I the one casting?
-	if($args->{sourceID} == $accountID)
+	if($args->{sourceID} eq $accountID)
 	{
 		if($hook eq 'packet/skill_cast')
 		{
@@ -285,7 +285,7 @@ sub parseStatus
 	my $time = Time::HiRes::time();
 
 	# Is this my status?
-	if($args->{ID} == $accountID)
+	if($args->{ID} eq $accountID)
 	{	
 		# Status type is: EFST_POSTDELAY
 		if($args->{type} == 46)
