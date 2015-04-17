@@ -232,8 +232,8 @@ sub parseSkill
 	my($hook, $args) = @_;
 	my $time = Time::HiRes::time();
 	
-	# Am I the one casting?
-	if($args->{sourceID} eq $accountID)
+	# Am I the one casting? Or is the skill kyrie (because kyrie doesn't tell me I finished casting)?
+	if($args->{sourceID} eq $accountID or ($args->{skillID} == 73 and $buff->{lastSkill}->{skill} == 73))
 	{
 		if($hook eq 'packet/skill_cast')
 		{
