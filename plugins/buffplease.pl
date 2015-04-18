@@ -11,7 +11,7 @@ use Plugins;
 use Network;
 use Globals;
 use Match;
-use Utils qw( min timeOut );
+use Utils qw( min timeOut parseArgs swrite formatNumber );
 use Log qw( message warning error );
 use Time::HiRes qw( time );
 
@@ -106,14 +106,88 @@ my $hooks = Plugins::addHooks(
     [ "packet_privMsg",              \&parseChat ],
 );
 
+my $cmds = Commands::register(
+    [
+        buffplease => [    #
+            'Auto-buff when people say please',
+            [ list     => 'show buff queue' ],
+            [ validate => 'validate plugin configuration' ]
+        ],
+        \&command,
+    ]
+);
+
 sub unload {
     Plugins::delHooks( $hooks );
+    Commands::unregister( $cmds );
 }
 
-sub check_config {
+sub command {
+    my ( undef, $args ) = @_;
+
+    my ( $cmd, @args ) = parseArgs( $args );
+    if ( $cmd eq 'list' ) {
+        list();
+    } elsif ( $cmd eq 'validate' ) {
+        validate();
+    } else {
+        error "[buffplease] Unknown command.\n";
+        Commands::helpIndent( 'buffplease', $Commands::customCommands{buffplease}{desc} );
+    }
+}
+
+sub list {
+    my $time = time;
+
+    my $fmt = '@> @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<< @>>>>>';
+
+    my @lines;
+
+    push @lines, "== [buffplease] Pending Requests ============\n";
+    push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
+    my @sorted = sort { $a->{created_at} <=> $b->{created_at} } @$requests;
+    foreach ( 0 .. $#sorted ) {
+        my $req    = $sorted[$_];
+        my $amount = '';
+        if ( $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ) {
+            $amount = formatNumber( $users->{ $req->{user} }->{healFor} );
+        }
+        push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+    }
+    push @lines, "(none)\n" if !@$requests;
+
+    push @lines, "== [buffplease] Accepted Requests ===========\n";
+    foreach ( 0 .. $#$commands ) {
+        my $req = $commands->[ $_ - 1 ];
+        push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName ] );
+    }
+
+    message join '', @lines;
+}
+
+sub validate {
+
     # Validate aliases values. Do the regular expressions compile?
+    foreach ( sort keys %{ $buff->{aliases} } ) {
+        next if eval {qr{$buff->{aliases}->{$_}}};
+        error "[buffplease] Alias key [$_] has an invalid regular expression.\n";
+    }
+
     # Validate aliases and ignore keys. Do the skills actually exist?
+    foreach ( sort keys %{ $buff->{aliases} } ) {
+        next if Skill::lookupIDNByName( $_ );
+        error "[buffplease] Alias key [$_] is not a valid skill name!\n";
+    }
+    foreach ( sort keys %{ $buff->{ignore} } ) {
+        next if Skill::lookupIDNByName( $_ );
+        error "[buffplease] Ignore key [$_] is not a valid skill name!\n";
+    }
+
     # Validate permission. Valid values are "all" and "guild".
+    my $valid_permissions = [qw( all guild )];
+    if ( !in_array( $valid_permissions, $buff->{permission} ) ) {
+        error "[buffplease] Permission [$buff->{permission}] is invalid. Valid permissions are: @$valid_permissions\n";
+    }
 }
 
 sub in_array {
@@ -279,7 +353,8 @@ sub parseChat {
 
         next if $buff->{ignore}->{$skillName};
 
-        $skillName .= "|$buff->{aliases}->{$skillName}" if $buff->{aliases}->{$skillName};
+        # Add alias matches if the alias is a valid regex.
+        $skillName .= "|$buff->{aliases}->{$skillName}" if $buff->{aliases}->{$skillName} && eval { qr/$buff->{aliases}->{$skillName}/ };
 
         # If the skill name occurs in this user's message
         next if $msg !~ /$skillName/i;
@@ -308,7 +383,7 @@ sub parseChat {
     $users->{$user}->{pleased_at} = time if $msg =~ $please_regex;
 
     # Heal 10k, 4000, etc.
-    if ( $msg =~ /([0-9,]+)\s*([kx]\s)?/i ) {
+    if ( $msg =~ /([0-9,]+)\s*([kx]\b)?/i ) {
         my ( $hp, $modifier ) = ( $1, $2 );
 
         $hp =~ s/,//g;
