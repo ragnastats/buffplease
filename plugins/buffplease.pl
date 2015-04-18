@@ -139,27 +139,31 @@ sub command {
 sub list {
     my $time = time;
 
-    my $fmt = '@> @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<< @>>>>>';
+    my $fmt = '[buffplease] @> @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<< @>>>>>';
 
     my @lines;
 
-    push @lines, "== [buffplease] Pending Requests ============\n";
-    push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
-    my @sorted = sort { $a->{created_at} <=> $b->{created_at} } @$requests;
-    foreach ( 0 .. $#sorted ) {
-        my $req    = $sorted[$_];
-        my $amount = '';
-        if ( $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ) {
-            $amount = formatNumber( $users->{ $req->{user} }->{healFor} );
+    if ( @$requests ) {
+        push @lines, "[buffplease] == Pending Requests ==========================\n";
+        push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
+        my @sorted = sort { $a->{created_at} <=> $b->{created_at} } @$requests;
+        foreach ( 0 .. $#sorted ) {
+            my $req = $sorted[$_];
+            my $amount = $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ? formatNumber( $users->{ $req->{user} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
         }
-        push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+    } else {
+        push @lines, "[buffplease] No pending requests.\n";
     }
-    push @lines, "(none)\n" if !@$requests;
 
-    push @lines, "== [buffplease] Accepted Requests ===========\n";
-    foreach ( 0 .. $#$commands ) {
-        my $req = $commands->[ $_ - 1 ];
-        push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName ] );
+    if ( @$commands ) {
+        push @lines, "[buffplease] == Accepted Requests =========================\n";
+        push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
+        foreach ( 0 .. $#$commands ) {
+            my $req = $commands->[ $_ - 1 ];
+            my $amount = $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ? formatNumber( $users->{ $req->{user} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+        }
     }
 
     message join '', @lines;
