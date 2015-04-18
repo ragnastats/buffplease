@@ -86,7 +86,6 @@ our $buff = {
 our $requests ||= [];
 our $commands ||= [];
 our $users    ||= {};
-our $guilds   ||= {};
 our $last_skill = '';
 our $timeout = { time => 0, timeout => 0 };
 
