@@ -23,6 +23,12 @@ our $buff = {
     'permission' => 'all',
     'guilds'     => [ 'RagnaStats', 'RagnaStats.com' ],
 
+    # What qualifies as "please"?
+    'please' => [ qw( please pwease pwese onegai ), 'por favor' ],
+
+    # What qualifies as "plz"?
+    'plz' => [ qw( plz pls plox ) ],
+
     # Use this to map what skills are triggered by the chat
     'aliases' => {
         'Blessing'                 => '(?:all|full) buff|bless|buff',
@@ -89,8 +95,8 @@ our $users    ||= {};
 our $last_skill = '';
 our $timeout = { time => 0, timeout => 0 };
 
-my $please_regex = qr/p+(?:l+|w+)e+a+s+e*|p+w+e+s+e/i;
-my $plz_regex    = qr/\b(?:p+l+z+|p+l+s+|p+l+o+x+)\b/i;
+my $please_regex = list_to_regex( @{ $buff->{please} } );
+my $plz_regex    = list_to_regex( @{ $buff->{plz} } );
 
 Plugins::register( "Buff Please?", "Buff people when they ask", \&unload );
 my $hooks = Plugins::addHooks(
@@ -233,7 +239,7 @@ sub next_request {
         }
 
         my $req = shift @$commands;
-        message sprintf "[buffplease] Accepting request to use skill [%s] on user [%s].\n", $req->{skill}, $req->{user};
+        message sprintf "[buffplease] Accepting request to use skill [%s] on user [%s] (last please was %.1f seconds ago).\n", $req->{skill}, $req->{user}, $time - $users->{ $req->{user} }->{pleased_at};
         return $req;
     }
 
@@ -428,6 +434,17 @@ sub parseChat {
         print( Dumper( $users ) );
         print( Dumper( $buff ) );
     }
+}
+
+# Case-insensitive, every letter must be repeated 1+ times, match on word boundaries.
+# list_to_regex( 'plz', 'pls' ) => '\b(?i:p+l+z+|p+l+s+)\b'
+sub list_to_regex {
+    '\b(?i:' . join(
+        '|',
+        map {
+            join '', map {"$_+"} split //, $_
+        } @_
+    ) . ')\b';
 }
 
 1;
