@@ -11,7 +11,7 @@ use Plugins;
 use Network;
 use Globals;
 use Match;
-use Utils qw( min timeOut parseArgs swrite formatNumber );
+use Utils qw( min max timeOut parseArgs swrite formatNumber );
 use Log qw( message warning error );
 use Time::HiRes qw( time );
 
@@ -158,8 +158,8 @@ sub list {
         my @sorted = sort { $a->{created_at} <=> $b->{created_at} } @$requests;
         foreach ( 0 .. $#sorted ) {
             my $req = $sorted[$_];
-            my $amount = $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ? formatNumber( $users->{ $req->{user} }->{healFor} ) : '';
-            push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+            my $amount = $req->{skill} == 28 && $users->{ $req->{target} }->{healFor} > 0 ? formatNumber( $users->{ $req->{target} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{target}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
         }
     } else {
         push @lines, "[buffplease] No pending requests.\n";
@@ -170,8 +170,8 @@ sub list {
         push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
         foreach ( 0 .. $#$commands ) {
             my $req = $commands->[ $_ - 1 ];
-            my $amount = $req->{skill} == 28 && $users->{ $req->{user} }->{healFor} > 0 ? formatNumber( $users->{ $req->{user} }->{healFor} ) : '';
-            push @lines, swrite( $fmt, [ $_, $req->{user}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+            my $amount = $req->{skill} == 28 && $users->{ $req->{target} }->{healFor} > 0 ? formatNumber( $users->{ $req->{target} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{target}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
         }
     }
 
@@ -217,7 +217,7 @@ sub next_request {
     # Delete requests older than 30 seconds.
     @$requests = grep {
         if ( $time - $_->{created_at} > 30 ) {
-            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because it is too old [%.1f seconds].\n", $_->{skill}, $_->{user}, $time - $_->{created_at};
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because it is too old [%.1f seconds].\n", $_->{skill}, $_->{target}, $time - $_->{created_at};
             0;
         } else {
             1;
@@ -227,14 +227,14 @@ sub next_request {
     while ( @$commands or @$requests ) {
         if ( !@$commands ) {
 
-            # Users must have said "please" within 30 seconds to be acceptable.
-            my @acceptable = grep { $time - $users->{ $_->{user} }->{pleased_at} < 30 } @$requests;
+            # User or target must have said "please" within 30 seconds to be acceptable.
+            my @acceptable = grep { $time - $users->{ $_->{user} }->{pleased_at} < 30 or $time - $users->{ $_->{target} }->{pleased_at} < 30 } @$requests;
 
             # No commands and no acceptable requests, we're done.
             return if !@acceptable;
 
             # Order requests by the last time we fulfilled a request by that user, to make sure everybody gets a fair chance.
-            @acceptable = sort { $users->{ $b->{user} }->{buffed_at} <=> $users->{ $a->{user} }->{buffed_at} || $a->{created_at} <=> $b->{created_at} } @acceptable;
+            @acceptable = sort { $users->{ $b->{target} }->{buffed_at} <=> $users->{ $a->{target} }->{buffed_at} || $a->{created_at} <=> $b->{created_at} } @acceptable;
 
             # Take the first request.
             my $req = shift @acceptable;
@@ -243,7 +243,7 @@ sub next_request {
         }
 
         my $req = shift @$commands;
-        message sprintf "[buffplease] Accepting request to use skill [%s] on user [%s] (last please was %.1f seconds ago).\n", $req->{skill}, $req->{user}, $time - $users->{ $req->{user} }->{pleased_at};
+        message sprintf "[buffplease] Accepting request to use skill [%s] on user [%s] (last please was %.1f seconds ago).\n", $req->{skill}, $req->{target}, $time - $users->{ $req->{target} }->{pleased_at};
         return $req;
     }
 
@@ -261,22 +261,22 @@ sub loop {
     while ( my $req = next_request() and $char->statusesString !~ /EFST_POSTDELAY/ ) {
 
         # Ensure the player still exists before casting.
-        my $player = $req->{user} eq $char->{name} ? $char : Match::player( $req->{user}, 1 );
+        my $player = $req->{target} eq $char->{name} ? $char : Match::player( $req->{target}, 1 );
         if ( !$player ) {
-            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they disappeared.\n", $req->{skill}, $req->{user};
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they disappeared.\n", $req->{skill}, $req->{target};
             next;
         }
 
         # Make sure we have the skill.
         my $skill = Skill->new( idn => $req->{skill} );
         if ( !$skill ) {
-            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because we don't have that skill.\n", $req->{skill}, $req->{user};
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because we don't have that skill.\n", $req->{skill}, $req->{target};
             next;
         }
 
         # Obey permissions.
         if ( $buff->{permission} eq 'guild' && !in_array( $buff->{guilds}, $player->{guild}->{name} ) ) {
-            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they are not in a whitelisted guild.\n", $req->{skill}, $req->{user};
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they are not in a whitelisted guild.\n", $req->{skill}, $req->{target};
             next;
         }
 
@@ -326,10 +326,10 @@ sub skillUsed {
         if ( $users->{ $actor->{name} }->{healFor} > 0 ) {
 
             # Extend their please.
-            $users->{ $actor->{name} }->{please} = $time;
+            $users->{ $actor->{name} }->{pleased_at} = $time;
 
             # Add heal to the queue again
-            unshift @$commands, { skill => 28, user => $actor->{name}, created_at => $time };
+            unshift @$commands, { skill => 28, user => $actor->{name}, target => $actor->{name}, created_at => $time };
             warning sprintf "[buffplease] Still need to heal user [%s] for [%d]. Re-queuing heal.\n", $actor->{name}, $users->{ $actor->{name} }->{healFor};
         }
     }
@@ -353,6 +353,9 @@ sub parseChat {
 
     my $msg  = $hook eq 'packet_selfChat' ? $args->{msg}  : $args->{Msg};
     my $user = $hook eq 'packet_selfChat' ? $args->{user} : $args->{MsgUser};
+
+    # The target of this request, which may not be the message sender.
+    my $target = $user;
 
     my $nreq = @$requests;
 
@@ -379,17 +382,16 @@ sub parseChat {
         my $potentialPlayer = $1 || $2 || $3;
 
         # Make sure it's defined and not please
-        my $skillUser = $user;
         if ( $potentialPlayer and $potentialPlayer !~ $please_regex ) {
             if ( my $player = Match::player( $potentialPlayer, 1 ) ) {
-                $skillUser = $player->{name};
+                $target = $player->{name};
             } elsif ( $char->{name} =~ /^\Q$potentialPlayer\E/i ) {
-                $skillUser = $char->{name};
+                $target = $char->{name};
             }
         }
 
-        message sprintf "[buffplease] Adding request to use skill [%s] on user [%s].\n", $skillID, $skillUser;
-        push @$requests, { skill => $skillID, user => $skillUser, created_at => time };
+        message sprintf "[buffplease] Adding request to use skill [%s] on user [%s].\n", $skillID, $target;
+        push @$requests, { skill => $skillID, user => $user, target => $target, created_at => time };
     }
 
     # Please?
@@ -406,22 +408,21 @@ sub parseChat {
         # Most people don't have more than 30,000 HP
         $hp = min( $hp, 30000 );
 
-        $users->{$user}->{healFor} = $hp;
+        $users->{$target}->{healFor} = $hp;
     }
 
     # HEAL ME MORE!!!
     # If this user has already been healed in the past 10 seconds
-    if ( $msg =~ $more_regex && !timeOut( $users->{$user}->{lastHeal}, 10 ) ) {
+    if ( $msg =~ $more_regex && !timeOut( $users->{$target}->{lastHeal}, 10 ) ) {
 
         # Extend their please.
-        $users->{$user}->{please} = time;
+        $users->{$target}->{pleased_at} = time;
 
-        push @$requests, { skill => 28, user => $user, created_at => time };
+        message sprintf "[buffplease] Adding request to use skill [%s] on user [%s].\n", 28, $target;
+        push @$requests, { skill => 28, user => $user, target => $target, created_at => time };
 
         # Someone asking for more probably wants a couple heals
-        if ( $users->{$user}->{healFor} < 5000 ) {
-            $users->{$user}->{healFor} = 5000;
-        }
+        $users->{$target}->{healFor} = max( $users->{$target}->{healFor}, 5000 );
     }
 
     # Plz?
