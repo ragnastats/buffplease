@@ -29,6 +29,9 @@ our $buff = {
     # What qualifies as "plz"?
     'plz' => [ qw( plz pls plox ) ],
 
+    # What qualifies as "more"?
+    'more' => [ qw( more +1 again ) ],
+
     # Use this to map what skills are triggered by the chat
     'aliases' => {
         'Blessing'                 => '(?:all|full) buff|bless|buff',
@@ -97,6 +100,7 @@ our $timeout = { time => 0, timeout => 0 };
 
 my $please_regex = list_to_regex( @{ $buff->{please} } );
 my $plz_regex    = list_to_regex( @{ $buff->{plz} } );
+my $more_regex   = list_to_regex( @{ $buff->{more} } );
 
 Plugins::register( "Buff Please?", "Buff people when they ask", \&unload );
 my $hooks = Plugins::addHooks(
@@ -407,7 +411,7 @@ sub parseChat {
 
     # HEAL ME MORE!!!
     # If this user has already been healed in the past 10 seconds
-    if ( $msg =~ /\bmore\b/i && !timeOut( $users->{$user}->{lastHeal}, 10 ) ) {
+    if ( $msg =~ $more_regex && !timeOut( $users->{$user}->{lastHeal}, 10 ) ) {
 
         # Extend their please.
         $users->{$user}->{please} = time;
@@ -442,7 +446,7 @@ sub list_to_regex {
     '\b(?i:' . join(
         '|',
         map {
-            join '', map {"$_+"} split //, $_
+            join '', map {"\Q$_\E+"} split //, $_
         } @_
     ) . ')\b';
 }
