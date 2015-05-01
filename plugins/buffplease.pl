@@ -126,6 +126,8 @@ my $cmds = Commands::register(
     ]
 );
 
+Misc::configModify( buffPlease => 0 ) if !exists $config{buffPlease};
+
 sub unload {
     Plugins::delHooks( $hooks );
     Commands::unregister( $cmds );
@@ -179,28 +181,36 @@ sub list {
 }
 
 sub validate {
+    my @errors;
+
+    if ( !$config{buffPlease} ) {
+        push @errors, "[buffplease] Not enabled. To enable: conf buffPlease 1\n";
+    }
 
     # Validate aliases values. Do the regular expressions compile?
     foreach ( sort keys %{ $buff->{aliases} } ) {
         next if eval {qr{$buff->{aliases}->{$_}}};
-        error "[buffplease] Alias key [$_] has an invalid regular expression.\n";
+        push @errors, "[buffplease] Alias key [$_] has an invalid regular expression.\n";
     }
 
     # Validate aliases and ignore keys. Do the skills actually exist?
     foreach ( sort keys %{ $buff->{aliases} } ) {
         next if Skill::lookupIDNByName( $_ );
-        error "[buffplease] Alias key [$_] is not a valid skill name!\n";
+        push @errors, "[buffplease] Alias key [$_] is not a valid skill name!\n";
     }
     foreach ( sort keys %{ $buff->{ignore} } ) {
         next if Skill::lookupIDNByName( $_ );
-        error "[buffplease] Ignore key [$_] is not a valid skill name!\n";
+        push @errors, "[buffplease] Ignore key [$_] is not a valid skill name!\n";
     }
 
     # Validate permission. Valid values are "all" and "guild".
     my $valid_permissions = [qw( all guild )];
     if ( !in_array( $valid_permissions, $buff->{permission} ) ) {
-        error "[buffplease] Permission [$buff->{permission}] is invalid. Valid permissions are: @$valid_permissions\n";
+        push @errors, "[buffplease] Permission [$buff->{permission}] is invalid. Valid permissions are: @$valid_permissions\n";
     }
+
+    error join '', @errors if @errors;
+    message "[buffplease] Validation complete. Found " . @errors . " errors.\n";
 }
 
 sub in_array {
@@ -350,6 +360,8 @@ sub parseStatus {
 
 sub parseChat {
     my ( $hook, $args ) = @_;
+
+    return if !$config{buffPlease};
 
     my $msg  = $hook eq 'packet_selfChat' ? $args->{msg}  : $args->{Msg};
     my $user = $hook eq 'packet_selfChat' ? $args->{user} : $args->{MsgUser};
