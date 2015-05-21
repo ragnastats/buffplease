@@ -1,4 +1,4 @@
-package Buff;
+package OpenKore::Plugins::BuffPlease;
 
 # Perl includes
 use strict;
@@ -11,459 +11,457 @@ use Plugins;
 use Network;
 use Globals;
 use Match;
+use Utils qw( min max timeOut parseArgs swrite formatNumber );
+use Log qw( message warning error );
+use Time::HiRes qw( time );
 
-our $buff ||= {
-				# This value is used to determine who will be buffed
-				# 'all' buffs anyone who asks
-				# 'guild' only buffs people in the following list of guilds
-				'permission' => 'all',
-				'guilds' => ['RagnaStats', 'RagnaStats.com'],
-				
-				# Use this to map what skills are triggered by the chat
-				'aliases' 	=> {
-								'Blessing'			=> '(?:all|full) buff|bless|buff',
-								'Increase AGI'		=> '(?:all|full) buff|\bagi\b|buff',
-								'Sanctuary'			=> 'sanc',
-								'High Heal'			=> 'high|highness|\bhh\b',
-								'Ruwach'			=> 'sight',
-								'Impositio Manus'	=> '(?:all|full) buff|impo',
-								'Kyrie Eleison'		=> '\bKE\b|Kyrie|\bKy\b',
-								'Resurrection'		=> 'res\b|resu',
-								'Status Recovery'	=> '(?:all|full) buff|status|recovery',
-								'Assumptio'			=> '(?:all|full) buff|assu|buff',
-								'Safety Wall'		=> 'wall',
-								'Magnificat'		=> '\bmag\b|magni',
-								'Secrament'			=> '(?:all|full) buff|secra|sacra|sacrement',
-								'Cantocandidus'		=> 'canto',
-								'Clementia'			=> 'clem',
-								'PRAEFATIO' 		=> 'prae', 
-								'Odins Power'		=> 'odin', 'odins',
-								'Renovatio'			=> '(?:all|full) buff|reno\b',
-								'Full Chemical Protection' => 'fcp',
-								'Endow Blaze'		=> '(?:flame|fire) endow|endow (?:fire|flame)',
-								'Endow Tsunami'		=> '(?:ice|water) endow|endow (?:ice|water)',
-								'Endow Tornado'		=> 'wind endow|endow wind',
-								'Endow Quake'		=> '(?:earth|ground) endow|endow (?:earth|ground)',
-								'Magic Strings'		=> 'string|strings'
-								},
-				
-				# These skills will never be used
-				'ignore'	=>	{
-								'Teleport'		=> 1,
-								'Warp Portal'	=> 1,
-								'Classical Pluck' => 1,
-								},
-								
-				# Messages to make fun of people who say plz
-				'wit'		=> [
-								"You mean please?",
-								"Don't you mean please?",
-								"You meant to say 'please', right?",
-								"Please check your dictionary.",
-								"Say please~",
-								"Plz doesn't cut it.",
-								"Pls isn't very polite.",
-								"Just say please :3",
-								"Please works better.",
-								"lrn2spell",
-								"P-l-e-a-s-e",
-								"Just say please?",
-								"This would be a lot easier if you said 'please'.",
-								"Saying please goes a long way.",
-								"Some day you'll learn... (to say please)",
-								"Have you tried saying please?",
-								"Where are your manners? Please try again.",
-								"Say please first~",
-								"Please please please!",
-								"What's so hard about saying please?",
-								]
-				};
-				
-our $commandUser ||= {};
-our $commandQueue ||= {};
-							
-Plugins::register("Buff Please?", "Buff people when they ask", \&unload);
-my $hooks = Plugins::addHooks(['mainLoop_post', \&loop],
-								['packet/skills_list', \&parseSkills],
-								['packet/skill_cast', \&parseSkill],
-								['packet/skill_used_no_damage', \&parseSkill],
-								['packet/actor_status_active', \&parseStatus],
-								
-								["packet_pubMsg", \&parseChat],
-								["packet_partyMsg", \&parseChat],
-								["packet_guildMsg", \&parseChat],
-								["packet_selfChat", \&parseChat],
-								["packet_privMsg", \&parseChat],
-								
-								['packet/actor_exists', \&parseActor],
-								['packet/actor_info', \&parseInfo]);
+our $buff = {
 
-								
-sub unload
-{
-	Plugins::delHooks($hooks);
+    # This value is used to determine who will be buffed
+    # 'all' buffs anyone who asks
+    # 'guild' only buffs people in the following list of guilds
+    'permission' => 'all',
+    'guilds'     => [ 'RagnaStats', 'RagnaStats.com' ],
+
+    # What qualifies as "please"?
+    'please' => [ qw( please pwease pwese onegai ), 'por favor' ],
+
+    # What qualifies as "plz"?
+    'plz' => [ qw( plz pls plox ) ],
+
+    # What qualifies as "more"?
+    'more' => [ qw( more +1 again ) ],
+
+    # Use this to map what skills are triggered by the chat
+    'aliases' => {
+        'Blessing'                 => '(?:all|full) buff|bless|buff',
+        'Increase AGI'             => '(?:all|full) buff|\bagi\b|buff',
+        'Sanctuary'                => 'sanc',
+        'High Heal'                => 'high|highness|\bhh\b',
+        'Ruwach'                   => 'sight',
+        'Impositio Manus'          => '(?:all|full) buff|impo',
+        'Kyrie Eleison'            => '\bKE\b|Kyrie|\bKy\b',
+        'Resurrection'             => 'res\b|resu',
+        'Status Recovery'          => '(?:all|full) buff|status|recovery',
+        'Assumptio'                => '(?:all|full) buff|assu|buff',
+        'Safety Wall'              => 'wall',
+        'Magnificat'               => '\bmag\b|magni',
+        'Secrament'                => '(?:all|full) buff|secra|sacra|sacrement',
+        'Cantocandidus'            => 'canto',
+        'Clementia'                => 'clem',
+        'PRAEFATIO'                => 'prae',
+        'Odins Power'              => 'odin',
+        'Renovatio'                => '(?:all|full) buff|reno\b',
+        'Full Chemical Protection' => 'fcp',
+        'Endow Blaze'              => '(?:flame|fire) endow|endow (?:fire|flame)',
+        'Endow Tsunami'            => '(?:ice|water) endow|endow (?:ice|water)',
+        'Endow Tornado'            => 'wind endow|endow wind',
+        'Endow Quake'              => '(?:earth|ground) endow|endow (?:earth|ground)',
+        'Magic Strings'            => 'string|strings'
+    },
+
+    # These skills will never be used
+    'ignore' => {
+        'Teleport'        => 1,
+        'Warp Portal'     => 1,
+        'Classical Pluck' => 1,
+    },
+
+    # Messages to make fun of people who say plz
+    'wit' => [
+        "You mean please?",
+        "Don't you mean please?",
+        "You meant to say 'please', right?",
+        "Please check your dictionary.",
+        "Say please~",
+        "Plz doesn't cut it.",
+        "Pls isn't very polite.",
+        "Just say please :3",
+        "Please works better.",
+        "lrn2spell",
+        "P-l-e-a-s-e",
+        "Just say please?",
+        "This would be a lot easier if you said 'please'.",
+        "Saying please goes a long way.",
+        "Some day you'll learn... (to say please)",
+        "Have you tried saying please?",
+        "Where are your manners? Please try again.",
+        "Say please first~",
+        "Please please please!",
+        "What's so hard about saying please?",
+    ],
+};
+
+our $requests ||= [];
+our $commands ||= [];
+our $users    ||= {};
+our $last_skill = '';
+our $timeout = { time => 0, timeout => 0 };
+
+my $please_regex = list_to_regex( @{ $buff->{please} } );
+my $plz_regex    = list_to_regex( @{ $buff->{plz} } );
+my $more_regex   = list_to_regex( @{ $buff->{more} } );
+
+Plugins::register( "Buff Please?", "Buff people when they ask", \&unload );
+my $hooks = Plugins::addHooks(
+    [ 'mainLoop_post',               \&loop ],
+    [ 'packet/skill_use_location',   \&skillUsed ],
+    [ 'packet/skill_used_no_damage', \&skillUsed ],
+    [ 'packet/actor_status_active',  \&parseStatus ],
+    [ "packet_pubMsg",               \&parseChat ],
+    [ "packet_partyMsg",             \&parseChat ],
+    [ "packet_guildMsg",             \&parseChat ],
+    [ "packet_selfChat",             \&parseChat ],
+    [ "packet_privMsg",              \&parseChat ],
+);
+
+my $cmds = Commands::register(
+    [
+        buffplease => [    #
+            'Auto-buff when people say please',
+            [ list     => 'show buff queue' ],
+            [ validate => 'validate plugin configuration' ]
+        ],
+        \&command,
+    ]
+);
+
+Misc::configModify( buffPlease => 0 ) if !exists $config{buffPlease};
+
+sub unload {
+    Plugins::delHooks( $hooks );
+    Commands::unregister( $cmds );
+}
+
+sub command {
+    my ( undef, $args ) = @_;
+
+    my ( $cmd, @args ) = parseArgs( $args );
+    if ( $cmd eq 'list' ) {
+        list();
+    } elsif ( $cmd eq 'validate' ) {
+        validate();
+    } else {
+        error "[buffplease] Unknown command.\n";
+        Commands::helpIndent( 'buffplease', $Commands::customCommands{buffplease}{desc} );
+    }
+}
+
+sub list {
+    my $time = time;
+
+    my $fmt = '[buffplease] @> @<<<<<<<<<<<<<<<<<<< @<<<<<<<<<<<<< @>>>>>';
+
+    my @lines;
+
+    if ( @$requests ) {
+        push @lines, "[buffplease] == Pending Requests ==========================\n";
+        push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
+        my @sorted = sort { $a->{created_at} <=> $b->{created_at} } @$requests;
+        foreach ( 0 .. $#sorted ) {
+            my $req = $sorted[$_];
+            my $amount = $req->{skill} == 28 && $users->{ $req->{target} }->{healFor} > 0 ? formatNumber( $users->{ $req->{target} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{target}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+        }
+    } else {
+        push @lines, "[buffplease] No pending requests.\n";
+    }
+
+    if ( @$commands ) {
+        push @lines, "[buffplease] == Accepted Requests =========================\n";
+        push @lines, swrite( $fmt, [ '', 'User', 'Skill', 'Amount' ] );
+        foreach ( 0 .. $#$commands ) {
+            my $req = $commands->[ $_ - 1 ];
+            my $amount = $req->{skill} == 28 && $users->{ $req->{target} }->{healFor} > 0 ? formatNumber( $users->{ $req->{target} }->{healFor} ) : '';
+            push @lines, swrite( $fmt, [ $_, $req->{target}, Skill->new( idn => $req->{skill} )->getName, $amount ] );
+        }
+    }
+
+    message join '', @lines;
+}
+
+sub validate {
+    my @errors;
+
+    if ( !$config{buffPlease} ) {
+        push @errors, "[buffplease] Not enabled. To enable: conf buffPlease 1\n";
+    }
+
+    # Validate aliases values. Do the regular expressions compile?
+    foreach ( sort keys %{ $buff->{aliases} } ) {
+        next if eval {qr{$buff->{aliases}->{$_}}};
+        push @errors, "[buffplease] Alias key [$_] has an invalid regular expression.\n";
+    }
+
+    # Validate aliases and ignore keys. Do the skills actually exist?
+    foreach ( sort keys %{ $buff->{aliases} } ) {
+        next if Skill::lookupIDNByName( $_ );
+        push @errors, "[buffplease] Alias key [$_] is not a valid skill name!\n";
+    }
+    foreach ( sort keys %{ $buff->{ignore} } ) {
+        next if Skill::lookupIDNByName( $_ );
+        push @errors, "[buffplease] Ignore key [$_] is not a valid skill name!\n";
+    }
+
+    # Validate permission. Valid values are "all" and "guild".
+    my $valid_permissions = [qw( all guild )];
+    if ( !in_array( $valid_permissions, $buff->{permission} ) ) {
+        push @errors, "[buffplease] Permission [$buff->{permission}] is invalid. Valid permissions are: @$valid_permissions\n";
+    }
+
+    error join '', @errors if @errors;
+    message "[buffplease] Validation complete. Found " . @errors . " errors.\n";
 }
 
 sub in_array {
-    my ($arr,$search_for) = @_;
-    foreach my $value (@$arr) {
+    my ( $arr, $search_for ) = @_;
+    foreach my $value ( @$arr ) {
         return 1 if $value eq $search_for;
     }
     return 0;
 }
 
-sub loop
-{
-	# This is where we periodically loop through the requested commands.
-	my $time = Time::HiRes::time();
+sub next_request {
+    my $time = time;
 
-	if(scalar keys %{$commandQueue})
-	{	
-		while(my($userName, $queue) = each(%{$commandQueue}))
-		{		
-			# If the request is older than 30 seconds... delete
-			if($commandUser->{$userName}->{time} < $time - 30) {
-				delete($commandQueue->{$userName});
-			}
-			else
-			{
-				# Have they said please within 30 seconds?
-				if($commandUser->{$userName}->{please} > $time - 30) {
-					my $command = shift(@{$commandQueue->{$userName}});					
-					push(@{$buff->{commands}}, $command);
-				}
-				
-				# Have they said plz within 30 seconds?
-				elsif($commandUser->{$userName}->{plz} > $time - 30) {
-					# Set the timeout to 7 seconds from now
-					$commandUser->{$userName}->{plzTimeout} = $time + 7;
-					delete($commandUser->{$userName}->{plz});
-					
-					my $randomPhrase = $buff->{wit}->[rand @{$buff->{wit}}];
-					Commands::run("c $randomPhrase");
-				}
-				
-				# If the user queue is empty, we don't need to store an empty value.
-				unless(@{$commandQueue->{$userName}}) {
-					delete($commandQueue->{$userName});
-				}
-			}
-		}
-	}
-		
-	if($buff->{commands} and @{$buff->{commands}} and $buff->{time} < $time)
-	{
-		# Check every 0.1 seconds
-		$buff->{time} = $time + 0.1;
-	
-		# It took 5 seconds to cast a skill? It might have gotten interrupted.
-		if($buff->{lastSkill}->{timeout} + 5 < $time)
-		{
-			unless($char->statusesString =~ /EFST_POSTDELAY/)
-			{
-				my $command = shift(@{$buff->{commands}});
-                my $player = ($command->{user} eq $char->{name}) ? 1 : Match::player($command->{user}, 1);
+    # Delete requests older than 30 seconds.
+    @$requests = grep {
+        if ( $time - $_->{created_at} > 30 ) {
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because it is too old [%.1f seconds].\n", $_->{skill}, $_->{target}, $time - $_->{created_at};
+            0;
+        } else {
+            1;
+        }
+    } @$requests;
 
-				# Remember this skill as the last skill we casted
-				$buff->{lastSkill} = {'timeout'	=> $time,
-									  'skill'	=> $command->{skill}};
-				
-				if($buff->{permission} eq 'guild')
-				{
-					unless(in_array($buff->{guilds}, $player->{guild}->{name}))
-					{
-						next;
-					}
-				}
+    while ( @$commands or @$requests ) {
+        if ( !@$commands ) {
 
-                # Ensure the player still exists before casting
-                if($player)
-                {
-                    # Sanitize usernames by adding slashes
-                    my $sanitized = $command->{user};
-                    $sanitized =~ s/'/\\'/g;
-                    $sanitized =~ s/;/\\;/g;
-                    Commands::run("$command->{type} $command->{skill} '$sanitized'");
-                }
-                else
-                {
-                    $buff->{lastSkill}->{timeout} = $time - 5;
-                }
-			}
-		}
-	}
+            # User or target must have said "please" within 30 seconds to be acceptable.
+            my @acceptable = grep { $time - $users->{ $_->{user} }->{pleased_at} < 30 or $time - $users->{ $_->{target} }->{pleased_at} < 30 } @$requests;
+
+            # No commands and no acceptable requests, we're done.
+            return if !@acceptable;
+
+            # Order requests by the last time we fulfilled a request by that user, to make sure everybody gets a fair chance.
+            @acceptable = sort { $users->{ $b->{target} }->{buffed_at} <=> $users->{ $a->{target} }->{buffed_at} || $a->{created_at} <=> $b->{created_at} } @acceptable;
+
+            # Take the first request.
+            my $req = shift @acceptable;
+            @$requests = grep { $_ ne $req } @$requests;
+            push @$commands, $req;
+        }
+
+        my $req = shift @$commands;
+        message sprintf "[buffplease] Accepting request to use skill [%s] on user [%s] (last please was %.1f seconds ago).\n", $req->{skill}, $req->{target}, $time - $users->{ $req->{target} }->{pleased_at};
+        return $req;
+    }
+
+    return;
 }
 
-sub parseSkills
-{
-	# Got a skills list?
-	for my $handle (@skillsID)
-	{
-		# Code repurposed from the openkore source
-		my $skill = new Skill(handle => $handle);
+# This is where we periodically loop through the requested commands.
+sub loop {
+    return if !$config{buffPlease};
+    return if !timeOut( $timeout );
 
-		if($char->{skills}{$handle}{lv})
-		{
-			my $skillID = $char->{skills}{$handle}{ID};
+    # Check at most every 0.1 seconds.
+    $timeout = { time => time, timeout => 0.1 };
 
-			$buff->{skillsAvailable}->{$skillID} = {
-														'name'	=> $skill->getName(),
-														'level'	=> $char->getSkillLevel($skill),
-														'range'	=> $char->{skills}{$handle}{range},
-														'sp'	=> $char->{skills}{$handle}{sp}
-													};
-						
-			# Don't add ignored skills to the skills list!
-			unless($buff->{ignore}->{$skill->getName()})
-			{
-				$buff->{skills}->{$skillID} = $skill->getName();
-				
-				# Append aditional aliases if this skill has any
-				if($buff->{aliases}->{$skill->getName()}) {
-					$buff->{skills}->{$skillID} .= "|".$buff->{aliases}->{$skill->getName()};
-				}
-			}
-		}
-	}
+    while ( my $req = next_request() and $char->statusesString !~ /EFST_POSTDELAY/ ) {
+
+        # Ensure the player still exists before casting.
+        my $player = $req->{target} eq $char->{name} ? $char : Match::player( $req->{target}, 1 );
+        if ( !$player ) {
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they disappeared.\n", $req->{skill}, $req->{target};
+            next;
+        }
+
+        # Make sure we have the skill.
+        my $skill = Skill->new( idn => $req->{skill} );
+        if ( !$skill ) {
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because we don't have that skill.\n", $req->{skill}, $req->{target};
+            next;
+        }
+
+        # Obey permissions.
+        if ( $buff->{permission} eq 'guild' && !in_array( $buff->{guilds}, $player->{guild}->{name} ) ) {
+            warning sprintf "[buffplease] Ignoring request to use skill [%s] on user [%s] because they are not in a whitelisted guild.\n", $req->{skill}, $req->{target};
+            next;
+        }
+
+        # Assume the cast failed after five seconds.
+        $timeout->{timeout} = 5;
+
+        # Remember this skill as the last skill we cast.
+        $last_skill = $req->{skill};
+
+        message "[buffplease] Using skill [$skill] on user [$player].\n";
+        my $skillTask = Task::UseSkill->new(
+            actor     => $char,
+            target    => $player,
+            actorList => $playersList,
+            skill     => $skill,
+        );
+        $taskManager->add( Task::ErrorReport->new( task => $skillTask ) );
+
+        # TODO: Target this code specifically at Blessing, because skills with EFST_POSTDELAY don't have this problem.
+        # Force the task to immediately try to cast the skill.
+        # This speeds up cast time by about 0.5 seconds when casting Blessing then Heal on iRO.
+        # $skillTask->castSkill;
+
+        last;
+    }
 }
 
-sub parseSkill
-{
-	my($hook, $args) = @_;
-	my $time = Time::HiRes::time();
-	
-	# Am I the one casting? Or is the skill kyrie (because kyrie doesn't tell me I finished casting)?
-	if($args->{sourceID} eq $accountID or ($args->{skillID} == 73 and $buff->{lastSkill}->{skill} == 73))
-	{
-		if($hook eq 'packet/skill_cast')
-		{
-			# Get the skill delay and wait that long before trying to do anything else
-			$buff->{time} = $time + (($args->{wait}) / 1000);
-		}
-		elsif($hook eq 'packet/skill_used_no_damage')
-		{
-			my $actor = Actor::get($args->{targetID});
-						
-			# Skill 28 is heal
-			if($args->{skillID} == 28)
-			{
-				$commandUser->{$actor->{name}}->{lastHeal} = $time;
-			
-				# If the player requested to be healed for a specific amount (heal 10k please)
-				if($commandUser->{$actor->{name}}->{healFor} > 0)
-				{
-					$commandUser->{$actor->{name}}->{healFor} -= $args->{amount};
-					
-					# If they still need more heals...
-					if($commandUser->{$actor->{name}}->{healFor} > 0) {
-						
-						$commandUser->{$actor->{name}}->{please} = $time;
-						$commandUser->{$actor->{name}}->{time} = $time;
-	
-						# Add heal to the queue again
-						if($actor->{name} eq $char->{name}) {
-							unshift(@{$commandQueue->{$actor->{name}}}, {'type' => 'ss', 'skill' => 28, 'user' => $actor->{name}});
-						}
-						else {			
-							unshift(@{$commandQueue->{$actor->{name}}}, {'type' => 'sp', 'skill' => 28, 'user' => $actor->{name}});
-						}
-					}
-				}
-			}
+sub skillUsed {
+    my ( undef, $args ) = @_;
 
-			# Skill casting complete, we don't need to remember the last skill anymore
-			if($args->{skillID} == $buff->{lastSkill}->{skill}) {		
-				delete($buff->{lastSkill});
-			}
-		}
-	}
+    # Kyrie doesn't tell me I finished casting.
+    return if $args->{sourceID} ne $accountID and $args->{skillID} != 73;
+    return if $args->{skillID} != $last_skill;
+
+    $timeout->{timeout} = 0;
+
+    my $time = time;
+
+    my $actor = Actor::get( $args->{targetID} );
+
+    # Skill 28 is heal
+    if ( $args->{skillID} == 28 ) {
+        $users->{ $actor->{name} }->{lastHeal} = $time;
+        $users->{ $actor->{name} }->{healFor} -= $args->{amount};
+
+        # If the player requested to be healed for a specific amount (heal 10k please) and they still need more heals...
+        if ( $users->{ $actor->{name} }->{healFor} > 0 ) {
+
+            # Extend their please.
+            $users->{ $actor->{name} }->{pleased_at} = $time;
+
+            # Add heal to the queue again
+            unshift @$commands, { skill => 28, user => $actor->{name}, target => $actor->{name}, created_at => $time };
+            warning sprintf "[buffplease] Still need to heal user [%s] for [%d]. Re-queuing heal.\n", $actor->{name}, $users->{ $actor->{name} }->{healFor};
+        }
+    }
 }
 
-sub parseStatus
-{
-	my($hook, $args) = @_;
-	my $time = Time::HiRes::time();
+sub parseStatus {
+    my ( undef, $args ) = @_;
 
-	# Is this my status?
-	if($args->{ID} eq $accountID)
-	{	
-		# Status type is: EFST_POSTDELAY
-		if($args->{type} == 46)
-		{
-			if($args->{tick})
-			{
-				# Get the skill cooldown and wait that long before trying to do anything else
-				$buff->{time} = $time + (($args->{tick}) / 1000);
-			}
-		}
-	}
+    return if $args->{ID} ne $accountID;
+
+    # Status type 46 is EFST_POSTDELAY
+    return if $args->{type} != 46;
+    return if !$args->{tick};
+
+    # Get the skill cooldown and wait that long before trying to do anything else
+    $timeout = { time => time, timeout => $args->{tick} / 1000 };
 }
 
-sub parseChat
-{
-	my($hook, $args) = @_;
-	my $time = Time::HiRes::time();
-	my $chat = Storable::dclone($args);
-	
-	# selfChat returns slightly different arguements, let's fix that
-	if($hook eq 'packet_selfChat')
-	{
-		$chat->{Msg} = $chat->{msg};
-		$chat->{MsgUser} = $chat->{user};
-	}
-	
-	# Sanitize potential regex in messages.
-	$chat->{Msg} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
+sub parseChat {
+    my ( $hook, $args ) = @_;
 
-	# Loop through the list of available skills
-	while(my($skillID, $skillName) = each(%{$buff->{skills}}))
-	{
-		# Remove whitespace from skill names, Gravity is not to be trusted!
-		$skillName =~ s/^\s+//;
-		$skillName =~ s/\s+$//;
-	
-		# If the skill name occurs in this user's message
-		if($chat->{Msg} =~ /$skillName/i) {
-			# Match the string following a skill name			
-			$chat->{Msg} =~ m/(?:$skillName)(?:\w+)?(?:\s+)?([^\s"']+|".+"|'.+')/i;
-		
-			# Save it and strip quotes
-			my $potentialPlayer = $1;
-			$potentialPlayer =~ s/["']//g;
-            
+    return if !$config{buffPlease};
 
+    my $msg  = $hook eq 'packet_selfChat' ? $args->{msg}  : $args->{Msg};
+    my $user = $hook eq 'packet_selfChat' ? $args->{user} : $args->{MsgUser};
 
-			# Make sure it's defined and not please
-			if($potentialPlayer and $potentialPlayer !~ /p+(l|w)+e+a+s+(e+)?|p+w+e+s+e/i)
-			{
-				my $player = Match::player($potentialPlayer, 1);
-				my $playerName = '';
-				
-				# Is it a player?
-				if($player) {
-					$playerName = $player->{name};
-				}
-								
-				# Is it me?
-				elsif($char->{name} =~ /^$potentialPlayer/i) {
-					$playerName = $char->{name};
-				}
-				
-				# Cast on the requested player
-				
-				if($playerName) {
-					$chat->{MsgUser} = $playerName;
-				}
-			}
-			
-			$commandUser->{$chat->{MsgUser}}->{time} = $time;
-			
-			# If you're the one asking for something, you need to use skill self (ss)
-			if($chat->{MsgUser} eq $char->{name}) {
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
-			}
-			
-			# Otherwise use skill on a player (sp)
-			else {
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
-			}
-		}
-	}
+    # The target of this request, which may not be the message sender.
+    my $target = $user;
 
-	# Please?
-	if($chat->{Msg} =~ /p+ ?(l|w)+ ?e+ ?a+ ?s+ ?(e+)?|p+w+e+s+e/i)
-	{
-		$commandUser->{$chat->{MsgUser}}->{please} = $time;
-	}
-	
-	# Plz?
-	if($chat->{Msg} =~ /\b(p+l+z+|p+l+s+|p+l+o+x+)\b/i)
-	{
-		# Unless this person has already been corrected.
-		if($commandUser->{$chat->{MsgUser}}->{plzTimeout} < $time) {
-			$commandUser->{$chat->{MsgUser}}->{plz} = $time;
-		}
-	}
+    my $nreq = @$requests;
 
-	# Heal 10k, 4000, etc.
-	if($chat->{Msg} =~ /([0-9,]+)\s*([kx]\s)?/i)
-	{
-		my $hp = $1;
-		my $modifier = $2;
+    # Loop through the list of available skills
+    my @requests;
+    foreach my $skillID ( keys %Skill::DynamicInfo::skills ) {
+        my $skillName = Skill->new( idn => $skillID );
 
-		$hp =~ s/,//;
-		
-		if($modifier) {
-			$hp *= 1000
-		}
-	
-		# Most people don't have more than 30,000 HP
-		if($hp > 30000) {
-			$hp = 30000;
-		}
-		
-		$commandUser->{$chat->{MsgUser}}->{healFor} = $hp;
-	}
+        # Trim whitespace from skill names, Gravity is not to be trusted!
+        $skillName =~ s/^\s+|\s+$//g;
 
-	# HEAL ME MORE!!!
-	if($chat->{Msg} =~ /more/i)
-	{
-		# If this user has already been healed in the past 10 seconds
-		if($commandUser->{$chat->{MsgUser}}->{lastHeal} + 10 > $time)
-		{
-			$commandUser->{$chat->{MsgUser}}->{please} = $time;
-			$commandUser->{$chat->{MsgUser}}->{time} = $time;
-		
-			if($chat->{MsgUser} eq $char->{name}) {
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => 28, 'user' => $chat->{MsgUser}});
-			}
-			else {			
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => 28, 'user' => $chat->{MsgUser}});
-			}			
-		
-			# Someone asking for more probably wants a couple heals
-			if($commandUser->{$chat->{MsgUser}}->{healFor} < 5000) {
-				$commandUser->{$chat->{MsgUser}}->{healFor} = 5000;
-			}
-		}
-	}
-	
-	if($chat->{Msg} =~ /debug/i)
-	{
-#		print(Dumper($buff->{skillsAvailable}));
-		print(Dumper($commandQueue));
-		print(Dumper($commandUser));
-		print(Dumper($buff));
-#		print(Dumper($char));
-	}
+        next if $buff->{ignore}->{$skillName};
+
+        # Add alias matches if the alias is a valid regex.
+        $skillName .= "|$buff->{aliases}->{$skillName}" if $buff->{aliases}->{$skillName} && eval { qr/$buff->{aliases}->{$skillName}/ };
+
+        # If the skill name occurs in this user's message
+        next if $msg !~ /$skillName/i;
+
+        # Match the string following a skill name
+        $msg =~ m/(?:$skillName)\w*\s*(?:"([^"]+)"|'([^']+)'|(\S+))/i;
+
+        # Save it
+        my $potentialPlayer = $1 || $2 || $3;
+
+        # Make sure it's defined and not please
+        if ( $potentialPlayer and $potentialPlayer !~ $please_regex ) {
+            if ( my $player = Match::player( $potentialPlayer, 1 ) ) {
+                $target = $player->{name};
+            } elsif ( $char->{name} =~ /^\Q$potentialPlayer\E/i ) {
+                $target = $char->{name};
+            }
+        }
+
+        message sprintf "[buffplease] Adding request to use skill [%s] on user [%s].\n", $skillID, $target;
+        push @$requests, { skill => $skillID, user => $user, target => $target, created_at => time };
+    }
+
+    # Please?
+    $users->{$user}->{pleased_at} = time if $msg =~ $please_regex;
+
+    # Heal 10k, 4000, etc.
+    if ( $msg =~ /([0-9,]+)\s*([kx]\b)?/i ) {
+        my ( $hp, $modifier ) = ( $1, $2 );
+
+        $hp =~ s/,//g;
+
+        $hp *= 1000 if $modifier;
+
+        # Most people don't have more than 30,000 HP
+        $hp = min( $hp, 30000 );
+
+        $users->{$target}->{healFor} = $hp;
+    }
+
+    # HEAL ME MORE!!!
+    # If this user has already been healed in the past 10 seconds
+    if ( $msg =~ $more_regex && !timeOut( $users->{$target}->{lastHeal}, 10 ) ) {
+
+        # Extend their please.
+        $users->{$target}->{pleased_at} = time;
+
+        message sprintf "[buffplease] Adding request to use skill [%s] on user [%s].\n", 28, $target;
+        push @$requests, { skill => 28, user => $user, target => $target, created_at => time };
+
+        # Someone asking for more probably wants a couple heals
+        $users->{$target}->{healFor} = max( $users->{$target}->{healFor}, 5000 );
+    }
+
+    # Plz?
+    # Unless this person has already been corrected.
+    if ( $nreq != @$requests and $msg =~ $plz_regex and timeOut( $users->{$user}->{plzed_at}, 30 ) ) {
+        $users->{$user}->{plzed_at} = time;
+        my $randomPhrase = $buff->{wit}->[ rand @{ $buff->{wit} } ];
+        Commands::run( "c $randomPhrase" );
+    }
+
+    if ( $msg =~ /debug/i ) {
+        print( Dumper( $requests ) );
+        print( Dumper( $commands ) );
+        print( Dumper( $users ) );
+        print( Dumper( $buff ) );
+    }
 }
 
-sub parseActor
-{
-	my($hook, $args) = @_;
-	my $playerID = unpack('V', $args->{ID});
-	my $guildID = unpack('V', $args->{guildID});
-	my $time = Time::HiRes::time();
-	
-	$buff->{player}->{$playerID} = $guildID;
-	
-	unless($buff->{guild}->{$guildID})
-	{
-		$messageSender->sendGetPlayerInfo($args->{ID});
-	}
-}
-
-sub parseInfo
-{
-	my($hook, $args) = @_;
-	
-	if($args->{guildName})
-	{
-		my $playerID = unpack('V', $args->{ID});
-		my $guildID = $buff->{player}->{$playerID};
-
-		$buff->{guild}->{$guildID} = $args->{guildName};		
-	}
+# Case-insensitive, every letter must be repeated 1+ times, match on word boundaries.
+# list_to_regex( 'plz', 'pls' ) => '\b(?i:p+l+z+|p+l+s+)\b'
+sub list_to_regex {
+    '\b(?i:' . join(
+        '|',
+        map {
+            join '', map {"\Q$_\E+"} split //, $_
+        } @_
+    ) . ')\b';
 }
 
 1;
