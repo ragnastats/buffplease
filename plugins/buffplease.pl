@@ -16,7 +16,7 @@ our $buff ||= {
 				# This value is used to determine who will be buffed
 				# 'all' buffs anyone who asks
 				# 'guild' only buffs people in the following list of guilds
-				'permission' => 'all',
+				'permission' => 'guild',
 				'guilds' => ['RagnaStats', 'RagnaStats.com'],
 				
 				# Use this to map what skills are triggered by the chat
@@ -162,7 +162,7 @@ sub loop
 			unless($char->statusesString =~ /EFST_POSTDELAY/)
 			{
 				my $command = shift(@{$buff->{commands}});
-                my $player = ($command->{user} eq $char->{name}) ? 1 : Match::player($command->{user}, 1);
+                my $player = ($command->{user} eq $char->{name}) ? 'self' : Match::player($command->{user}, 1);
 
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
@@ -170,7 +170,7 @@ sub loop
 				
 				if($buff->{permission} eq 'guild')
 				{
-					unless(in_array($buff->{guilds}, $player->{guild}->{name}))
+					unless($player eq 'self' || in_array($buff->{guilds}, $player->{guild}->{name}))
 					{
 						next;
 					}
