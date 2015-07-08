@@ -161,8 +161,9 @@ sub loop
 		{
 			unless($char->statusesString =~ /EFST_POSTDELAY/)
 			{
-				my $command = shift(@{$buff->{commands}});
+                my $command = shift(@{$buff->{commands}});
                 my $player = ($command->{user} eq $char->{name}) ? 'self' : Match::player($command->{user}, 1);
+                my $requester = ($command->{requester} eq $char->{name}) ? 'self' : Match::player($command->{requester}, 1);
 
 				# Remember this skill as the last skill we casted
 				$buff->{lastSkill} = {'timeout'	=> $time,
@@ -170,8 +171,9 @@ sub loop
 				
 				if($buff->{permission} eq 'guild')
 				{
-					unless($player eq 'self' || in_array($buff->{guilds}, $player->{guild}->{name}))
+					unless($player eq 'self' || in_array($buff->{guilds}, $requester->{guild}->{name}) || in_array($buff->{guilds}, $player->{guild}->{name}))
 					{
+                        $buff->{lastSkill}->{timeout} = $time - 5;
 						next;
 					}
 				}
@@ -311,7 +313,9 @@ sub parseChat
 		$chat->{Msg} = $chat->{msg};
 		$chat->{MsgUser} = $chat->{user};
 	}
-	
+
+    $chat->{Requester} = $chat->{MsgUser}; 
+    
 	# Sanitize potential regex in messages.
 	$chat->{Msg} =~ s/[-\\.,_*+?^\$\[\](){}!=|]/\\$&/g;
 
@@ -360,12 +364,12 @@ sub parseChat
 			
 			# If you're the one asking for something, you need to use skill self (ss)
 			if($chat->{MsgUser} eq $char->{name}) {
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'ss', 'skill' => $skillID, 'user' => $chat->{MsgUser}, 'requester' => $chat->{Requester}});
 			}
 			
 			# Otherwise use skill on a player (sp)
 			else {
-				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $chat->{MsgUser}});
+				unshift(@{$commandQueue->{$chat->{MsgUser}}}, {'type' => 'sp', 'skill' => $skillID, 'user' => $chat->{MsgUser}, 'requester' => $chat->{Requester}});
 			}
 		}
 	}
