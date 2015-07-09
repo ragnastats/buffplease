@@ -171,7 +171,7 @@ sub loop
 				
 				if($buff->{permission} eq 'guild')
 				{
-					unless($player eq 'self' || in_array($buff->{guilds}, $requester->{guild}->{name}) || in_array($buff->{guilds}, $player->{guild}->{name}))
+					unless($requester eq 'self' || in_array($buff->{guilds}, $requester->{guild}->{name}) || in_array($buff->{guilds}, $player->{guild}->{name}))
 					{
                         $buff->{lastSkill}->{timeout} = $time - 5;
 						next;
