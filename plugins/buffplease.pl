@@ -140,7 +140,15 @@ sub loop
 					delete($commandUser->{$userName}->{plz});
 					
 					my $randomPhrase = $buff->{wit}->[rand @{$buff->{wit}}];
-					Commands::run("c $randomPhrase");
+
+                    if($buff->{permission} eq 'guild')
+                    {
+                        Commands::run("g $randomPhrase");
+                    }
+                    else
+                    {
+                        Commands::run("c $randomPhrase");
+                    }
 				}
 				
 				# If the user queue is empty, we don't need to store an empty value.
